@@ -48,14 +48,18 @@ INPUT = {
 
 @pytest.fixture
 def fixture(tmp_path):
-    url = os.environ.get("IAI_TEST_DATABASE_URL", "sqlite://")
-    if url != "sqlite://":
+    url = os.environ.get("IAI_TEST_DATABASE_URL")
+    if url is not None:
         parsed = make_url(url)
         if parsed.database != "intelligenceai_test" or parsed.host not in {
             "localhost",
             "127.0.0.1",
         }:
             pytest.fail("only loopback intelligenceai_test database may be reset by these fixtures")
+    else:
+        # Runner polls and API/writer transactions overlap. StaticPool's single
+        # DBAPI connection lets a poll rollback undo another transaction's UPDATE.
+        url = f"sqlite:///{(tmp_path / 'web.sqlite3').as_posix()}"
     db = engine(url, testing=True)
     metadata.drop_all(db)
     metadata.create_all(db)
