@@ -60,8 +60,15 @@ are not altered. Use existing operator-owned `IAI_RUNNER_DATABASE_URL` and
 `IAI_RUNNER_STATE_DIR`. Run `python -m intelligenceai.web.vendor_runner --once`
 or `--reconcile INVOCATION_UUID`. State is private on the runner host, without an
 API mount. In addition to [core supervisor privileges](web-runner.md), this runner
-needs SELECT on sessions/approvals and SELECT/INSERT/UPDATE on vendor invocations,
-with no permission to create sessions, approvals, memberships or grants.
+needs SELECT on sessions/approvals and SELECT/INSERT/UPDATE on vendor invocations.
+PostgreSQL row locking also requires UPDATE on at least one selected column
+([PostgreSQL SELECT privileges](https://www.postgresql.org/docs/17/sql-select.html)).
+For the session/approval locks, limit that privilege to `web_sessions.version`
+and `web_approvals.created_at`; this supervisor never writes those columns.
+Do not grant INSERT/DELETE on sessions/approvals or UPDATE on their identity,
+revocation, expiry or approval-binding columns. It must not create sessions,
+approvals, memberships or grants. CI tests use an ephemeral fixture database;
+production least-privilege provisioning is not yet verified.
 
 `tests/test_approved_vendor.py` covers both actual core profiles, HTTP approval,
 one fake process, private artifacts, requester/approver/session revocation, logout,
