@@ -1,5 +1,7 @@
 # 구조와 상태
 
+선택 설치하는 [웹 콘솔](web-architecture.md)은 같은 origin의 GUI·API, OIDC 서버 세션, PostgreSQL 프로젝트 인가와 영속 대기열을 사용합니다. 로컬 controller를 HTTP로 감싸지 않습니다. [API](web-api.md), [웹 보안](web-security.md), [배포](web-deployment.md)를 별도 계약으로 관리합니다. Linux runner와 외부 효과는 비활성입니다.
+
 이 버전은 하나의 로컬 사용자, 등록된 fixture writer와 정적 parser를 대상으로 합니다. 역할·provider·model·executor는 별개 필드입니다. registry의 enabled 상태와 실제 권한 검증이 실행 가능 여부를 결정합니다. worker 출력에 승인이나 정책을 넣어도 controller 권한으로 해석하지 않습니다.
 
 ```mermaid
@@ -39,5 +41,5 @@ invocation ID는 task·step·attempt의 digest입니다. 중복 결과는 동일
 
 `READY → RUNNING → VERIFYING → REVIEWING → REPAIRING` 또는 `READY_FOR_APPROVAL → COMPLETED`를 사용합니다. 필수 scanner 미확인은 `UNVERIFIED`, 실패는 `FAILED`, 범위 위반·수리 한도는 `BLOCKED`, 시작 불명은 `NEEDS_RECONCILIATION`입니다. 취소할 때 진행 중인 효과가 불명이라면 CANCELLED로 성공 처리하지 않습니다.
 
-CLI와 로컬 stdio MCP는 같은 controller의 typed DAG를 실행합니다. step 결과와 명시적 result reference를 저장하고 writer는 직렬화하며 병렬 정적 검토는 고정된 후보 바이트를 읽습니다. 다음 항목은 미구현입니다: 임의 모델 분해, 실제 MCO/PAL 리뷰, 사용자 프로젝트의 임의 test/build 실행, 강제 복구, cleanup과 상태 UI입니다. MCP는 operator가 부여한 저장소에서 여섯 tool만 노출하며 승인·외부 작업을 제공하지 않습니다.
+CLI와 로컬 stdio MCP는 같은 controller의 typed DAG를 실행합니다. step 결과와 명시적 result reference를 저장하고 writer는 직렬화하며 병렬 정적 검토는 고정된 후보 바이트를 읽습니다. 다음 항목은 미구현입니다: 임의 모델 분해, 실제 MCO/PAL 리뷰, 사용자 프로젝트의 임의 test/build 실행, 강제 복구와 cleanup입니다. 웹 상태 UI는 별도의 private 원장을 사용합니다. MCP는 operator가 부여한 저장소에서 여섯 tool만 노출하며 승인·외부 작업을 제공하지 않습니다.
 

@@ -6,6 +6,18 @@ IntelligenceAI is an early local task controller. LangGraph persists workflow po
 
 This is a foundation, not a finished general AI assistant. It does not authenticate tools, call paid models, publish, merge or deploy. Meta AI is excluded.
 
+## Web GUI
+
+The web app provides public introduction/docs, a synthetic read-only demo, and a private project console with eight views: dashboard, projects/members, new task/plan preview, task/steps, candidate/checks, approval/recovery, connections/environments, and audit. KO/EN switching saves only the language preference; dates and numbers use Intl and the browser timezone.
+
+The private API uses a separate PostgreSQL ledger and opaque OIDC server sessions with project authorization. Submissions enter a durable HELD queue. A separate [fixed-fixture supervisor](docs/web-runner.md) can execute the real core typed DAG after an operator provisions an expiring project capability and a user explicitly queues the task. Its candidates are synthetic and evidence is static-only. Real models and external effects remain disabled; OS containment is unverified. It does not expose the local CLI SQLite database, file locks or in-memory queue over HTTP. The public demo has no private data, login or writes.
+
+The completed GUI scope is fixed-fixture submission, durable queuing, core DAG execution, static results, private review approval, cancellation and recovery. Arbitrary repository code, shell and vendor CLI execution are unavailable. Production authentication/DB/TLS validation and current supervisor UI browser QA remain incomplete; this scope does not constitute a finished AI product. See the [validation record](docs/web-validation.md) for evidence and NOTRUN items.
+
+Read [architecture](docs/web-architecture.md), [API](docs/web-api.md), [security](docs/web-security.md), [deployment](docs/web-deployment.md) and [validation](docs/web-validation.md). Build with the optional web dependencies, then `npm ci --ignore-scripts`, `npm run build` and `npm run build:public` under `web/`. Run `uv run --frozen --extra web python scripts/pack_public_demo.py` from the repository root to create the self-contained `deliverables/public-demo.html`.
+
+The [public introduction and KO/EN synthetic demo](https://intelligenceai.violet-pixie-4145.chatgpt.site) is deployed on Sites. It contains only static HTML, synthetic data and disabled mutations; no login, private API, database or runner is connected. [Deployment identity and source provenance](deploy/public-site.json) are retained for updates. A real private rollout still needs an approved Linux destination, existing PostgreSQL and OIDC registration, and HTTPS ingress. Container recipes are prepared but not runtime-verified.
+
 ## Install and run
 
 A restricted [local stdio MCP service](docs/mcp.md) uses the same controller and official pinned Python SDK 1.26.0. It exposes capabilities/preview/submit/status/results/cancel only. Operator repository grants and durable admission keys restrict requests; approval and external actions are absent from model tools. No HTTP port or application registration is needed.
@@ -53,5 +65,5 @@ uv run --frozen ruff check src tests
 uv run --frozen ruff format --check src tests
 ```
 
-CI checks CLI/DAG, contracts, approval, recovery, actual stdio SDK, ordinary Linux/macOS process groups, secret scans and installed wheel entry points. Vendor E2E, API connectivity, Windows/WSL isolation and cost/performance remain `UNVERIFIED`. No external exactly-once or measured quality improvement is claimed. UI is deferred. See the [macOS guide](docs/macos.md) for separate Apple Silicon/Intel CI and support boundaries.
+CI checks CLI/DAG, contracts, approval, recovery, actual stdio SDK, ordinary Linux/macOS process groups, secret scans and installed wheel entry points. Vendor E2E, API connectivity, Windows/WSL isolation and cost/performance remain `UNVERIFIED`. No external exactly-once or measured quality improvement is claimed. The web GUI uses a separate private ledger and deployment boundary. See the [macOS guide](docs/macos.md) for separate Apple Silicon/Intel CI and support boundaries.
 

@@ -1,5 +1,9 @@
 # Dependency and source record
 
+The optional web extra is locked in `uv.lock`; GUI packages are pinned in `web/package-lock.json`. They are installed locally from PyPI/npm without vendor CLI or browser installation. Runtime additions are FastAPI 0.143.0 (MIT), Uvicorn 0.54.0 (BSD-3-Clause), SQLAlchemy 2.1.4 (MIT), Psycopg 3.3.6 (LGPL-3.0; binary distributions include separately licensed libraries), Authlib 1.8.0 (BSD-3-Clause), HTTPX 0.28.1 (BSD-3-Clause), React/React DOM 19.3.0 (MIT), and Lucide React 0.468.0 (ISC). Web build/test tools include Vite 8.3.4, TypeScript 5.9.3 (Apache-2.0), Vitest 5.0.3 and ESLint 10.12.0. Consult each locked package's distribution metadata for transitive licenses; the original `dependency-licenses.json` describes the core and is not asserted to cover this new optional tree.
+
+Official web integration references: [Authlib Starlette OAuth](https://docs.authlib.org/en/stable/oauth2/client/web/starlette.html), [SQLAlchemy row locking](https://docs.sqlalchemy.org/en/20/core/selectable.html#sqlalchemy.sql.expression.Select.with_for_update), [FastAPI testing](https://fastapi.tiangolo.com/tutorial/testing/), [Vite](https://vite.dev/guide/), and [React](https://react.dev/). Container recipes use official Node/Python/PostgreSQL/uv distributions; they are not runtime-verified or immutable-digest deployment attestations.
+
 Application code is original IntelligenceAI code under MIT. No upstream source repository is copied or relicensed. Optional tools retain their own licenses. Installed dependency metadata is recorded in `dependency-licenses.json`; complete package versions, PyPI sources and artifact SHA256 hashes are fixed in `uv.lock`. Metadata records are evidence, not a legal determination. Unknown metadata must be reviewed before redistribution.
 
 | Component | Fixed version | Official source / tag | License | Use |

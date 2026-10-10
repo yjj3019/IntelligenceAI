@@ -6,6 +6,30 @@ IntelligenceAI는 AI 작업의 실행 상태와 변경 후보, 검사 근거, �
 
 현재 실행 가능한 범위는 비용이 발생하지 않는 정적 검사 DAG와 결정적 fixture 작성입니다. Claude·Codex·Grok·Gemini CLI·Antigravity와 Omnilane·MCO·PAL의 실제 연결은 권한 강제를 확인할 때까지 비활성화했습니다. 범용 AI 제품을 위한 초기 기반이며, 실제 모델로 임의의 개발 요청을 처리하는 완성 제품은 아닙니다. Meta AI는 이번 범위에서 제외했습니다.
 
+## 웹 GUI
+
+공개 소개·문서와 합성 읽기 전용 데모, 로그인한 사용자의 private 프로젝트 콘솔을 추가했습니다. 대시보드, 프로젝트·구성원, 새 작업·계획 미리보기, 작업 상세·단계, 후보 diff·검사, 승인·복구, 연결·실행환경, 감사 화면을 제공합니다. 상단 KO/EN 전환은 선택한 언어만 저장하며 날짜·시간대는 브라우저 설정을 따릅니다.
+
+공개 데모에는 실제 작업·로그인이 없습니다. private API는 별도의 PostgreSQL 원장과 OIDC 서버 세션을 사용하고 객체별 프로젝트 권한을 확인합니다. 제출 작업은 HELD 대기에 기록됩니다. 운영자가 만료되는 프로젝트 실행 권한을 설정한 뒤 사용자가 직접 요청하면 [고정 fixture supervisor](docs/web-runner.md)가 실제 core DAG를 실행합니다. 후보는 합성 데이터이며 검사는 정적 파서만 사용합니다. 유료 모델·외부 효과는 비활성이고 OS 격리는 미검증 상태입니다. task·generation별 core 저장소를 분리하며 로컬 CLI의 공유 SQLite와 파일 잠금을 HTTP로 노출하지 않습니다.
+
+완료한 GUI 범위는 고정 fixture의 제출·대기열·core DAG 실행·정적 결과·승인·취소·복구 연결입니다. 임의 저장소 코드·shell·vendor CLI 실행은 제공하지 않습니다. 운영 인증·DB·TLS 검증과 최신 supervisor UI의 실제 브라우저 QA는 미완료이며, 전체 AI 제품의 완성을 뜻하지 않습니다. 검증 근거와 NOTRUN 항목은 [검증 기록](docs/web-validation.md)에 구분했습니다.
+
+[공개 소개·KO/EN 데모](https://intelligenceai.violet-pixie-4145.chatgpt.site)를 Sites에 배포했습니다. 합성 데이터만 표시하는 정적 사이트이며 로그인이나 프로젝트 쓰기 API는 없습니다. 배포 ID와 소스는 [공개 배포 기록](deploy/public-site.json)에 보존합니다.
+
+[웹 구조](docs/web-architecture.md) · [API 계약](docs/web-api.md) · [웹 보안](docs/web-security.md) · [배포 절차](docs/web-deployment.md) · [검증 기록](docs/web-validation.md)
+
+```powershell
+uv sync --frozen --extra web --extra dev
+cd web
+npm ci --ignore-scripts
+npm run build
+npm run build:public
+cd ..
+uv run --frozen --extra web python scripts/pack_public_demo.py
+```
+
+공개 배포용 산출물은 `deliverables/public-demo.html`입니다. private 운영에는 기존 Linux 실행 대상, PostgreSQL 연결과 OIDC 등록, HTTPS origin이 필요합니다. 배포 대상이 제공되기 전에는 실제 공개 서버를 실행하지 않습니다. Docker·Compose 파일은 준비된 배포 레시피이며 실제 대상에서의 실행 검증은 남아 있습니다.
+
 ## 설치
 
 같은 controller를 사용하는 [로컬 stdio MCP](docs/mcp.md)를 제공합니다. 여섯 tool만 노출하며 모델에 승인·외부 공개 기능을 주지 않습니다. 포트 개방이나 앱 등록 없이 SDK client로 검증합니다.
@@ -64,5 +88,5 @@ uv run --frozen ruff format --check src tests
 
 fixture 수직 흐름, 계획·경로 계약, 승인 변경, crash·재시작, 시크릿 마스킹, Linux/macOS 자식 프로세스 종료와 MCP SDK stdio 연결를 테스트합니다. 실제 vendor E2E, 모델 선택, API 연결, Windows/WSL 격리와 성능·비용은 별도 `UNVERIFIED`입니다. 외부 작업의 exactly-once 실행이나 측정하지 않은 품질·속도 향상을 보장하지 않습니다.
 
-실제 연결을 열기 전에는 고정 버전별 caller·프로세스·모델 확인과 OS 권한 경계를 검증해야 합니다. 상태 화면, 임의 프로젝트의 테스트 실행, production 배포는 이후 범위입니다. Apple Silicon·Intel 설치와 정확한 CI 검증 범위는 [macOS 안내](docs/macos.md)에 정리했습니다.
+실제 연결을 열기 전에는 고정 버전별 caller·프로세스·모델 확인과 OS 권한 경계를 검증해야 합니다. 웹 상태 화면은 별도의 private 원장에 연결했습니다. 임의 프로젝트의 테스트 실행과 실제 production 배포 검증은 남아 있습니다. Apple Silicon·Intel 설치와 정확한 CI 검증 범위는 [macOS 안내](docs/macos.md)에 정리했습니다.
 
