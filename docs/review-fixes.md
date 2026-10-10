@@ -8,7 +8,7 @@
 | implement/read_only | 입력 수용 후 writer lease 없이 파일 작성 가능 | Step role/mode 일치 검사, model_copy도 submit·authorize에서 재검증, 실제 쓰기 함수의 lease 확인 |
 | repair checkpoint 경계 | 같은 논리 repair를 replay하면 예산 두 번 차감 | candidate·generation·round·finding·policy로 operation ID 구성, 원장 decision 재사용, commit 후 checkpoint 전 crash 테스트 |
 | state/cancel 경합 | READY 조회 직후 cancel commit 뒤 RUNNING으로 덮어쓰기 | BEGIN IMMEDIATE 상태 전이, expected generation, 두 DB 연결 barrier와 stale 예약 거부 |
-| 후보 ValueError | 승인 후 unsafe 경로 검사 실패가 승인 삭제를 건너뜀 | SafetyError/ValueError/OSError 모두 승인 삭제·영구 BLOCKED, Linux NUL 추가 후 제거해도 승인 재사용 거부 |
+| 후보 ValueError | 승인 후 unsafe 경로 검사 실패가 승인 삭제를 건너뜀 | 모든 candidate 검증 예외는 승인 삭제·영구 BLOCKED, 네 예외 종류 회귀와 Linux NUL 추가 후 제거해도 승인 재사용 거부 |
 | 링크 쓰기 | hardlink 외부 inode 변경, dangling symlink는 exists 검사 우회 | lstat 종류·link count 검사, 새 임시 inode 작성 후 os.replace, 외부 생성/변경 0회 및 교체 경합 fixture |
 
 상태 전이와 실제 fixture 쓰기는 generation을 확인합니다. fixture 쓰기의 writer lease 확인부터 원자 교체까지 SQLite 트랜잭션을 유지해 cancel commit이 그 경계에 끼어들지 못하게 합니다. 이는 신뢰한 로컬 fixture의 애플리케이션 경계이며 OS sandbox 보장은 아닙니다.

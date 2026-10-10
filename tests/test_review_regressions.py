@@ -209,7 +209,10 @@ def test_atomic_state_cancel_two_connections_barrier(tmp_path):
         ledger.close()
 
 
-def test_candidate_value_error_permanently_revokes_approval(approval_controller, repo, monkeypatch):
+@pytest.mark.parametrize("failure", [SafetyError, ValueError, OSError, RuntimeError])
+def test_candidate_validation_failure_permanently_revokes_approval(
+    approval_controller, repo, monkeypatch, failure
+):
     from intelligenceai.contracts import Action
 
     controller = approval_controller
@@ -220,7 +223,7 @@ def test_candidate_value_error_permanently_revokes_approval(approval_controller,
     original = controller.candidate
 
     def invalid_candidate(task_id):
-        raise ValueError("unsafe artifact path")
+        raise failure("unsafe artifact path")
 
     monkeypatch.setattr(controller, "candidate", invalid_candidate)
     with pytest.raises(SafetyError):

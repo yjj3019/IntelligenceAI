@@ -294,7 +294,7 @@ class Controller:
             if not result or result["candidate"] != candidate.model_dump():
                 raise SafetyError("candidate drift invalidated evidence and approval")
             return candidate
-        except (SafetyError, ValueError, OSError) as exc:
+        except Exception as exc:
             self.ledger.invalidate_candidate(task_id)
             raise SafetyError(
                 "candidate validation failed; approval permanently invalidated"
