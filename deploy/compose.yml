@@ -20,4 +20,5 @@ services:
     mem_limit: 512m
     cpus: 1.0
     pids_limit: 128
-# No runner service: dispatch and paid providers are intentionally unimplemented.
+# Fixed-fixture supervisor is a separately provisioned operator process; see web-runner.md.
+# No live provider, arbitrary shell or external-effect service is enabled here.

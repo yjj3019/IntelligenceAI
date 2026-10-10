@@ -83,6 +83,28 @@ jobs = Table(
     Column("lease_token", String(64)),
     Column("lease_expires_at", BigInteger),
 )
+execution_grants = Table(
+    "web_execution_grants",
+    metadata,
+    Column("project_id", ForeignKey(projects.c.id), primary_key=True),
+    Column("mode", String(32), nullable=False),
+    Column("policy_digest", String(64), nullable=False),
+    Column("expires_at", BigInteger, nullable=False),
+)
+attempts = Table(
+    "web_attempts",
+    metadata,
+    Column("core_task_id", String(36), primary_key=True),
+    Column("project_id", ForeignKey(projects.c.id), nullable=False),
+    Column("task_id", ForeignKey(tasks.c.id), nullable=False),
+    Column("generation", Integer, nullable=False),
+    Column("phase", String(32), nullable=False),
+    Column("profile", String(32), nullable=False),
+    Column("policy_digest", String(64), nullable=False),
+    Column("plan_digest", String(64), nullable=False),
+    Column("receipt", JSON),
+    UniqueConstraint("task_id", "generation"),
+)
 receipts = Table(
     "web_receipts",
     metadata,

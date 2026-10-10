@@ -146,6 +146,78 @@ function privateFetch(
 }
 
 describe("private boundary and failure flows", () => {
+  it("queues only an explicit fixed fixture action and labels real static receipts honestly in KO/EN", async () => {
+    history.replaceState({}, "", "/app/task");
+    const mock = privateFetch(200, {
+      runs: [
+        {
+          core_task_id: "core-fixture",
+          generation: 1,
+          phase: "RECEIVED",
+          receipt: {
+            scope: "FIXTURE_STATIC_ONLY",
+            live_model: "NOTRUN",
+            os_sandbox: "UNVERIFIED",
+            core_state: "UNVERIFIED",
+            steps: [
+              {
+                step_id: "candidate",
+                status: "SUCCEEDED",
+                result: { status: "SUCCEEDED" },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const base = mock.getMockImplementation()!;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/connections"))
+        return new Response(
+          JSON.stringify({
+            ...demoConnections,
+            fixture_execution: "AUTHORIZED",
+          }),
+        );
+      if (String(input).endsWith("/run-fixture"))
+        return new Response(
+          JSON.stringify({ id: "task-fixture", state: "QUEUED" }),
+        );
+      return base(input, options);
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Core runs & receipts" });
+    expect(
+      screen.getByText(/Static checks verify candidate bytes/),
+    ).toBeVisible();
+    const posts = () =>
+      mock.mock.calls.filter(([, options]) => options?.method === "POST");
+    expect(posts()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByRole("heading", { name: "Core runs & receipts" });
+    expect(posts()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Run fixed fixture" }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0][1]?.body).toBe("{}");
+    expect(String(posts()[0][0])).toMatch(
+      /\/tasks\/task-fixture\/run-fixture$/,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
+    expect(
+      await screen.findByRole("heading", { name: "Core 실행·수신 기록" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "고정 fixture 실행" }),
+    ).toBeVisible();
+  });
+  it("keeps fixture execution disabled without operator capability and throughout the public demo", async () => {
+    history.replaceState({}, "", "/app/task");
+    privateFetch();
+    render(<App />);
+    expect(
+      await screen.findByRole("button", { name: "Run fixed fixture" }),
+    ).toBeDisabled();
+  });
   it("receipt checks and refresh never submit approval; only explicit retry resends the immutable intent", async () => {
     history.replaceState({}, "", "/app/approvals");
     const mock = privateFetch(200, {

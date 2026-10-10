@@ -10,7 +10,7 @@ IntelligenceAI는 AI 작업의 실행 상태와 변경 후보, 검사 근거, �
 
 공개 소개·문서와 합성 읽기 전용 데모, 로그인한 사용자의 private 프로젝트 콘솔을 추가했습니다. 대시보드, 프로젝트·구성원, 새 작업·계획 미리보기, 작업 상세·단계, 후보 diff·검사, 승인·복구, 연결·실행환경, 감사 화면을 제공합니다. 상단 KO/EN 전환은 선택한 언어만 저장하며 날짜·시간대는 브라우저 설정을 따릅니다.
 
-공개 데모에는 실제 작업·로그인이 없습니다. private API는 별도의 PostgreSQL 원장과 OIDC 서버 세션을 사용하고 객체별 프로젝트 권한을 확인합니다. 현재 제출은 HELD 대기에 저장됩니다. Linux runner와 실제 모델·외부 효과는 비활성 상태입니다. 기존 CLI의 로컬 SQLite나 파일 잠금을 HTTP로 노출하지 않습니다.
+공개 데모에는 실제 작업·로그인이 없습니다. private API는 별도의 PostgreSQL 원장과 OIDC 서버 세션을 사용하고 객체별 프로젝트 권한을 확인합니다. 제출 작업은 HELD 대기에 기록됩니다. 운영자가 만료되는 프로젝트 실행 권한을 설정한 뒤 사용자가 직접 요청하면 [고정 fixture supervisor](docs/web-runner.md)가 실제 core DAG를 실행합니다. 후보는 합성 데이터이며 검사는 정적 파서만 사용합니다. 유료 모델·외부 효과는 비활성이고 OS 격리는 미검증 상태입니다. task·generation별 core 저장소를 분리하며 로컬 CLI의 공유 SQLite와 파일 잠금을 HTTP로 노출하지 않습니다.
 
 [공개 소개·KO/EN 데모](https://intelligenceai.violet-pixie-4145.chatgpt.site)를 Sites에 배포했습니다. 합성 데이터만 표시하는 정적 사이트이며 로그인이나 프로젝트 쓰기 API는 없습니다. 배포 ID와 소스는 [공개 배포 기록](deploy/public-site.json)에 보존합니다.
 

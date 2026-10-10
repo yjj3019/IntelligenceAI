@@ -15,6 +15,7 @@ All `/api` calls require the opaque server session. There are no bearer principa
 | `POST /api/projects/{project}/tasks` | Operator/owner; atomically record BLOCKED task + HELD job |
 | `GET /api/projects/{project}/tasks/{task}` | Task, artifact metadata and review binding |
 | `POST .../{task}/cancel` | `{}`; operator/owner; confirmed unstarted or CANCEL_REQUESTED |
+| `POST .../{task}/run-fixture` | `{}`; operator/owner plus operator-provisioned fixed-fixture capability; idempotent queue admission only |
 | `POST .../{task}/recover` | `{}`; operator/owner; unstarted only; invalidate old approval |
 | `POST .../{task}/approve` | Approver/owner; exact binding; verified evidence mandatory |
 | `GET .../{task}/approval-receipts/{key}` | Approver/owner; session actor's historical receipt only; read-only, never creates/replays approval |
@@ -35,3 +36,5 @@ Errors contain only a stable `error` code, never rejected payloads, raw exceptio
 The 409 message allowlist distinguishes `termination_receipt_required`, `recovery_not_available`, `verified_evidence_required`, `approval_binding_changed`, `approval_expired_or_ttl_invalid` and `idempotency_conflict`. Unknown codes use a safe translated fallback; raw codes and exception text are never rendered.
 
 `/auth/login` and `/auth/callback` implement OIDC with fixed server-configured callback origin. No arbitrary return URL is accepted. `/healthz` reports only readiness and execution-disabled, without credentials, filesystem paths or provider identities.
+
+Task detail now includes `runs`: `core_task_id`, `generation`, `phase` and a redacted receipt. Receipts label `FIXTURE_STATIC_ONLY`, `live_model: NOTRUN`, `os_sandbox: UNVERIFIED`, original core state and actual step/invocation records. These are synthetic candidate/static-parser results, never model success. Connection reads expose capability authorization status without credentials or state paths. Queue admission errors `fixture_execution_grant_required` and `fixture_run_not_available` have KO/EN messages. Status/receipt/log/artifact/SSE GETs have no execution mutation. The [runner contract](web-runner.md) defines crash/reconciliation behavior; there is no browser force-reconcile route.

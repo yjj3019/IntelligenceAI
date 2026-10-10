@@ -1,5 +1,6 @@
 """Transactional application service. Actor comes exclusively from the server session."""
 
+import hashlib
 import secrets
 from collections.abc import Callable
 
@@ -11,7 +12,9 @@ from intelligenceai.web.contracts import ApprovalInput, MemberInput, TaskInput, 
 from intelligenceai.web.store import (
     approvals,
     artifacts,
+    attempts,
     audit,
+    execution_grants,
     jobs,
     members,
     now,
@@ -119,6 +122,24 @@ class Service:
                 select(approvals.c.binding).where(approvals.c.task_id == task_id)
             ).scalar()
             result["approval"] = approved
+            result["runs"] = list(
+                reversed(
+                    [
+                        dict(r)
+                        for r in conn.execute(
+                            select(
+                                attempts.c.core_task_id,
+                                attempts.c.generation,
+                                attempts.c.phase,
+                                attempts.c.receipt,
+                            )
+                            .where(attempts.c.task_id == task_id)
+                            .order_by(attempts.c.generation.desc())
+                            .limit(10)
+                        ).mappings()
+                    ]
+                )
+            )
             return result
 
     @staticmethod
@@ -237,7 +258,7 @@ class Service:
             if task["state"] == "CANCELLED":
                 return {"id": task_id, "state": "CANCELLED"}
             # Only an unclaimed held job can be confirmed synchronously as never started.
-            confirmed = job["state"] == "HELD" and job["lease_token"] is None
+            confirmed = job["state"] in {"HELD", "QUEUED"} and job["lease_token"] is None
             state = "CANCELLED" if confirmed else "CANCEL_REQUESTED"
             conn.execute(
                 update(jobs)
@@ -261,7 +282,11 @@ class Service:
                 .mappings()
                 .one()
             )
-            if job["lease_token"] is not None or job["state"] not in {"HELD", "CANCELLED"}:
+            if job["lease_token"] is not None or job["state"] not in {
+                "HELD",
+                "CANCELLED",
+                "FINISHED",
+            }:
                 raise Problem(409, "termination_receipt_required")
             if task["state"] not in {"BLOCKED", "FAILED", "CANCELLED"}:
                 raise Problem(409, "recovery_not_available")
@@ -283,6 +308,7 @@ class Service:
                 .values(generation=generation, state="HELD", cancel_requested=False)
             )
             conn.execute(delete(approvals).where(approvals.c.task_id == task_id))
+            conn.execute(delete(artifacts).where(artifacts.c.task_id == task_id))
             self.record(
                 conn, project_id, actor, "task.recovered", {"generation": generation}, task_id
             )
@@ -290,6 +316,48 @@ class Service:
 
         return self.mutate(
             actor, project_id, key, {"recover": task_id}, {"owner", "operator"}, operation
+        )
+
+    def run_fixture(self, actor, project_id, task_id, key):
+        """Explicit bounded admission; a private-review approval cannot enable execution."""
+
+        def operation(conn, project):
+            task = self.task_row(conn, project_id, task_id)
+            job = (
+                conn.execute(select(jobs).where(jobs.c.task_id == task_id).with_for_update())
+                .mappings()
+                .one()
+            )
+            grant = (
+                conn.execute(
+                    select(execution_grants).where(execution_grants.c.project_id == project_id)
+                )
+                .mappings()
+                .first()
+            )
+            if (
+                not grant
+                or grant["mode"] != "fixed-fixture"
+                or grant["expires_at"] <= now()
+                or (grant["policy_digest"] != project["policy_digest"])
+            ):
+                raise Problem(409, "fixture_execution_grant_required")
+            if job["state"] != "HELD" or job["lease_token"] or task["state"] != "BLOCKED":
+                raise Problem(409, "fixture_run_not_available")
+            conn.execute(update(jobs).where(jobs.c.id == job["id"]).values(state="QUEUED"))
+            conn.execute(update(tasks).where(tasks.c.id == task_id).values(state="QUEUED"))
+            self.record(
+                conn,
+                project_id,
+                actor,
+                "fixture.queued",
+                {"scope": "FIXTURE_STATIC_ONLY", "model_calls": 0},
+                task_id,
+            )
+            return {"id": task_id, "state": "QUEUED", "execution_enabled": False}
+
+        return self.mutate(
+            actor, project_id, key, {"run_fixture": task_id}, {"owner", "operator"}, operation
         )
 
     @staticmethod
@@ -313,6 +381,7 @@ class Service:
             task = self.task_row(conn, project_id, task_id)
             binding = data.model_dump()
             self.check_binding(task, project, binding)
+            self.check_snapshot(conn, task)
             conn.execute(delete(approvals).where(approvals.c.task_id == task_id))
             conn.execute(
                 insert(approvals).values(
@@ -330,6 +399,43 @@ class Service:
             {"owner", "approver"},
             operation,
         )
+
+    @staticmethod
+    def check_snapshot(conn, task):
+        """The frozen fixture receipt and private artifact bytes must still agree."""
+        snapshot = conn.execute(
+            select(attempts.c.receipt).where(
+                attempts.c.task_id == task["id"],
+                attempts.c.generation == task["generation"],
+                attempts.c.phase == "RECEIVED",
+            )
+        ).scalar()
+        if snapshot is None:
+            if conn.execute(
+                select(attempts.c.core_task_id).where(
+                    attempts.c.task_id == task["id"], attempts.c.generation == task["generation"]
+                )
+            ).first():
+                raise Problem(409, "verified_evidence_required")
+            # Legacy/operator-imported static reviews have no runner mapping.
+            return
+        values = list(
+            conn.execute(select(artifacts).where(artifacts.c.task_id == task["id"])).mappings()
+        )
+        if (
+            digest(snapshot["candidate"]) != task["candidate_digest"]
+            or digest(snapshot["evidence"]) != task["evidence_digest"]
+            or len(values) != len(snapshot["contents"])
+        ):
+            raise Problem(409, "approval_binding_changed")
+        for item in values:
+            content = snapshot["contents"].get(item["name"])
+            if (
+                content is None
+                or item["content"] != content
+                or item["digest"] != hashlib.sha256(content.encode("utf-8")).hexdigest()
+            ):
+                raise Problem(409, "approval_binding_changed")
 
     def reject(self, actor, project_id, task_id, key):
         def operation(conn, _):
@@ -417,6 +523,7 @@ class Service:
                 raise Problem(409, "approval_required")
             self.authorize(conn, grant["actor_id"], project_id, {"owner", "approver"})
             self.check_binding(task, project, grant["binding"])
+            self.check_snapshot(conn, task)
             raise Problem(503, "runner_and_external_effects_disabled")
 
 

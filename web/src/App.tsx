@@ -766,7 +766,9 @@ function WorkspaceApp() {
       setFeedback(
         result.state === "CANCEL_REQUESTED"
           ? "Cancellation requested. Termination has not been confirmed."
-          : "Saved to the private ledger. Execution remains disabled.",
+          : result.state === "QUEUED"
+            ? "Fixed fixture queued. No paid model or external action is authorized."
+            : "Saved to the private ledger. Execution remains disabled.",
       );
       if (operation === "tasks" && result.id) {
         setForm({ title: "", request: "", profile: "python-review" });
@@ -1649,7 +1651,25 @@ function WorkspaceApp() {
                         {active ? task.request : t(task.request)}
                       </p>
                       <PlanView plan={task.plan} />
+                      <p className="muted">
+                        {t(
+                          "Fixed fixtures create synthetic candidates and run static parsers only. Live models, shell commands and OS containment remain unverified.",
+                        )}
+                      </p>
                       <div className="button-row">
+                        <button
+                          className="button primary"
+                          disabled={
+                            !active ||
+                            !canWrite ||
+                            busy ||
+                            task.state !== "BLOCKED" ||
+                            connections?.fixture_execution !== "AUTHORIZED"
+                          }
+                          onClick={() => void perform(taskPath + "run-fixture")}
+                        >
+                          {t("Run fixed fixture")}
+                        </button>
                         <button
                           className="button secondary"
                           onClick={() => navigate("candidate", task.id)}
@@ -1688,6 +1708,59 @@ function WorkspaceApp() {
                         </button>
                       </div>
                     </section>
+                    {task.runs && task.runs.length > 0 && (
+                      <section className="panel">
+                        <h2>{t("Core runs & receipts")}</h2>
+                        {task.runs.map((run) => (
+                          <article key={run.core_task_id}>
+                            <h3>
+                              {t("Generation")} {run.generation} ·{" "}
+                              {t(run.phase)}
+                            </h3>
+                            <code className="digest">{run.core_task_id}</code>
+                            <p>
+                              {run.receipt
+                                ? t(
+                                    "Fixed fixture receipt. Static checks verify candidate bytes; they do not verify a live model or sandbox.",
+                                  )
+                                : t(
+                                    "Receipt pending. Lease expiry does not confirm termination.",
+                                  )}
+                            </p>
+                            {run.receipt && (
+                              <>
+                                <dl className="binding-list">
+                                  <div>
+                                    <dt>{t("Live model")}</dt>
+                                    <dd>{t(run.receipt.live_model)}</dd>
+                                  </div>
+                                  <div>
+                                    <dt>{t("OS sandbox")}</dt>
+                                    <dd>{t(run.receipt.os_sandbox)}</dd>
+                                  </div>
+                                  <div>
+                                    <dt>{t("Core state")}</dt>
+                                    <dd>{t(run.receipt.core_state)}</dd>
+                                  </div>
+                                </dl>
+                                <ol className="step-list">
+                                  {run.receipt.steps.map((step, index) => (
+                                    <li key={step.step_id + index}>
+                                      <strong>{t(step.step_id)}</strong>{" "}
+                                      <Badge
+                                        state={
+                                          step.result?.status || step.status
+                                        }
+                                      />
+                                    </li>
+                                  ))}
+                                </ol>
+                              </>
+                            )}
+                          </article>
+                        ))}
+                      </section>
+                    )}
                     <section className="panel provenance">
                       <h2>{t("Provenance & execution")}</h2>
                       <dl>
@@ -1715,7 +1788,7 @@ function WorkspaceApp() {
                       <p className="muted">
                         {t(
                           active
-                            ? "No model or sandbox has executed. This ledger records held work only."
+                            ? "Live model execution is NOTRUN. Fixed fixture receipts describe static checks only."
                             : "A sample status is an illustration. It does not mean a model or sandbox has executed.",
                         )}
                       </p>

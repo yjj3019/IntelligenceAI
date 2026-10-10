@@ -62,6 +62,22 @@ export type Task = {
   source: string;
   artifacts?: Artifact[];
   approval?: Binding | null;
+  runs?: {
+    core_task_id: string;
+    generation: number;
+    phase: string;
+    receipt: null | {
+      scope: string;
+      live_model: string;
+      os_sandbox: string;
+      core_state: string;
+      steps: {
+        step_id: string;
+        status: string;
+        result: null | { status: string };
+      }[];
+    };
+  }[];
 };
 export type Audit = {
   id: string;
@@ -79,4 +95,6 @@ export type Connections = {
   runner: string;
   database: string;
   external_effects: string;
+  fixture_execution?: string;
+  live_model?: string;
 };

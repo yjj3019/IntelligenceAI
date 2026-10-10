@@ -2,6 +2,34 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  FIXTURE_ONLY_CAPABILITY: "고정 fixture 실행 권한만 설정됨",
+  "Run fixed fixture": "고정 fixture 실행",
+  "Fixed fixture queued. No paid model or external action is authorized.":
+    "고정 fixture가 대기열에 등록됐습니다. 유료 모델이나 외부 작업은 허용되지 않습니다.",
+  "Fixed fixtures create synthetic candidates and run static parsers only. Live models, shell commands and OS containment remain unverified.":
+    "고정 fixture는 합성 후보를 만들고 정적 파서만 실행합니다. 실제 모델, shell 명령과 OS 격리는 검증되지 않았습니다.",
+  "Core runs & receipts": "Core 실행·수신 기록",
+  "Fixed fixture receipt. Static checks verify candidate bytes; they do not verify a live model or sandbox.":
+    "고정 fixture 수신 기록입니다. 정적 검사로 후보 bytes를 확인하며 실제 모델이나 sandbox를 검증하지는 않습니다.",
+  "Receipt pending. Lease expiry does not confirm termination.":
+    "수신 기록을 기다립니다. lease 만료는 실행 종료를 확인하지 않습니다.",
+  "Live model": "실제 모델",
+  "Core state": "Core 상태",
+  "Live model execution is NOTRUN. Fixed fixture receipts describe static checks only.":
+    "실제 모델 실행은 NOTRUN입니다. 고정 fixture 수신 기록은 정적 검사만 설명합니다.",
+  "An operator must provision an unexpired fixed-fixture capability before this task can be queued.":
+    "대기열 등록 전 운영자가 만료되지 않은 고정 fixture 실행 권한을 설정해야 합니다.",
+  "This task cannot be queued in its current state. Refresh its saved status.":
+    "현재 상태에서는 대기열에 등록할 수 없습니다. 저장된 상태를 새로고침하세요.",
+  "fixture execution": "fixture 실행",
+  "live model": "실제 모델",
+  AUTHORIZED: "권한 설정됨",
+  NOTRUN: "미실행",
+  CLAIMED: "소유권 확보",
+  RESERVED: "실행 예약",
+  STARTING: "실행 시작 중",
+  RECEIVED: "수신 완료",
+  TERMINATED: "종료 확인",
   "Signing out. Private requests are invalidated.":
     "로그아웃 중입니다. 기존 private 요청은 무효화됩니다.",
   "Approval intent expiry:": "승인 요청 만료:",

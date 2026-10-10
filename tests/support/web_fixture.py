@@ -8,6 +8,8 @@ import base64
 import hashlib
 import secrets
 import tempfile
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -16,13 +18,25 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from joserfc import jwt
 from joserfc.jwk import RSAKey
-from sqlalchemy import insert, update
+from sqlalchemy import insert, select, update
 
 from intelligenceai.web.app import create_app
 from intelligenceai.web.config import Settings
 from intelligenceai.web.contracts import TaskInput
+from intelligenceai.web.runner import Runner
 from intelligenceai.web.service import Service, bootstrap
-from intelligenceai.web.store import engine, jobs, members, metadata, now, tasks, uid, users
+from intelligenceai.web.store import (
+    engine,
+    execution_grants,
+    jobs,
+    members,
+    metadata,
+    now,
+    projects,
+    tasks,
+    uid,
+    users,
+)
 
 ORIGIN = "http://127.0.0.1:4173"
 ISSUER = ORIGIN + "/oidc"
@@ -129,6 +143,19 @@ def browser_app(directory):
         )
         conn.execute(insert(members).values(project_id=project, user_id=viewer, role="viewer"))
     service = Service(db)
+    with db.begin() as conn:
+        policy = conn.execute(
+            select(projects.c.policy_digest).where(projects.c.id == project)
+        ).scalar_one()
+        conn.execute(
+            insert(execution_grants).values(
+                project_id=project,
+                mode="fixed-fixture",
+                policy_digest=policy,
+                expires_at=now() + 3600,
+            )
+        )
+    runner = Runner(db, Path(directory) / "runner")
     for title in ["Held fixture task", "Failed fixture task", "Uncertain fixture task"]:
         result = service.submit(
             owner,
@@ -168,7 +195,28 @@ def browser_app(directory):
         db=db,
         testing=True,
     )
-    app = FastAPI(docs_url=None, openapi_url=None)
+
+    @asynccontextmanager
+    async def lifecycle(_):
+        stop = threading.Event()
+
+        def work():
+            while not stop.wait(0.25):
+                try:
+                    runner.run_once()
+                except Exception:
+                    continue  # Fail closed; exception text is never exposed or stored.
+
+        worker = threading.Thread(target=work, name="owned-fixture-worker")
+        worker.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            worker.join()
+            db.dispose()
+
+    app = FastAPI(docs_url=None, openapi_url=None, lifespan=lifecycle)
     app.mount("/oidc", test_provider(client_value))
     app.mount("/", console)
     return app
@@ -177,8 +225,6 @@ def browser_app(directory):
 if __name__ == "__main__":
     root = Path(__file__).resolve().parents[2]
     (root / ".tools").mkdir(exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        prefix="web-browser-fixture-", dir=root / ".tools"
-    ) as directory:
+    with tempfile.TemporaryDirectory(prefix="wf-", dir=root / ".tools") as directory:
         print("LOOPBACK TEST FIXTURE ONLY · ephemeral users/issuer/SQLite · no models")
         uvicorn.run(browser_app(directory), host="127.0.0.1", port=4173, access_log=False)

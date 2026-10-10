@@ -11,7 +11,10 @@ flowchart LR
     API --> Grant[Project authorization]
     Grant --> Ledger[PostgreSQL web ledger]
     Ledger --> Queue[Durable HELD job queue]
-    Queue -. unimplemented .-> Runner[Separate isolated Linux runner]
+    Queue --> Capability[Operator fixed-fixture capability]
+    Capability --> Runner[Separate credential-free fixture process]
+    Runner --> Core[One isolated core ledger per mapped attempt]
+    Core --> Verifier[Candidate-byte verifier and fenced receipt import]
 ```
 
 Public pages include introduction, documentation and eight sample screens. The standalone public build uses hash navigation and a CSP with `connect-src 'none'`. It cannot sign in, save work or call a backend. The private deployment notice collects no credentials. Its fixtures explicitly report zero model calls and unverified evidence.
@@ -22,13 +25,13 @@ Each project has a tenant identity and explicit member grants. Project, task, au
 
 Project row locks serialize mutations, permission changes and duplicate receipts on PostgreSQL. A request key is scoped to actor and project and bound to the payload digest. Reusing a key with a changed operation/payload returns 409. Receipts are historical mutation results; refresh reads current state. The service records task, held job, audit event and admission receipt in one database transaction. No in-memory queue or shared filesystem lock is used in production.
 
-Admission creates `BLOCKED` tasks and `HELD` jobs. The API never starts a model, vendor CLI or arbitrary repository code. A held, unleased job can be confirmed never started and atomically cancelled. A leased/uncertain job becomes `CANCEL_REQUESTED`, retains its lease and cannot be recovered without trusted termination evidence. Preparing an unstarted recovery increments generation and clears candidate/evidence/approval. The future runner is explicitly unimplemented; its entry point fails closed.
+Admission creates `BLOCKED` tasks and `HELD` jobs. A separately provisioned fixed-fixture capability permits explicit queued work through the real core DAG. The API never starts a model, vendor CLI or arbitrary repository code. An unclaimed held/queued job can be confirmed never started and atomically cancelled. A leased/uncertain job becomes `CANCEL_REQUESTED`, retains its lease and cannot be recovered without trusted completion/termination evidence. Recovery increments generation and clears current candidate/evidence/artifacts/approval. The [supervisor contract](web-runner.md) documents isolated core state, project-first locks, credential-free subprocesses, crash boundaries, fencing and immutable-byte verification. STARTING uncertainty is never automatically replayed.
 
 Review grants bind candidate, policy, evidence, a fixed private-review destination, generation and expiry (at most 15 minutes). Before any possible dispatch, the service rechecks the grant, current candidate and approver membership inside the project transaction. Even a valid grant returns execution-disabled. There is no browser evidence ingestion or dispatch route. An external action policy and contained Linux runner need a separate implementation and authorization before enabling execution.
 
 Artifacts are private text in the web database, returned only after project/task checks as `text/plain` attachments with `nosniff`. React renders candidate bytes as text. Audit detail is redacted before persistence; recognized secrets in task inputs are rejected before storing them. This regex defense does not replace a real secret scanner and cannot guarantee detection of all secrets.
 
-SSE returns one bounded `snapshot` and closes. The browser reconnects at a five-second interval and must reauthorize each snapshot, so a long-lived authorized stream cannot continue after revocation. Audit/log reads are bounded to 100 rows, task lists to 100 and artifact metadata to 50. Pagination and a production runner are future work.
+SSE returns one bounded `snapshot` and closes. The browser reconnects at a five-second interval and must reauthorize each snapshot, so a long-lived authorized stream cannot continue after revocation. Audit/log reads are bounded to 100 rows, task lists to 100 and artifact metadata to 50. Pagination, live providers and hostile-code isolation are future work.
 
 KO and EN share `web/src/i18n.tsx`. Initial selection is Korean for a Korean browser locale, otherwise English. Explicit selection overrides it and persists only the language in localStorage. The document language, date/number locale and resolved browser timezone stay aligned. IDs, code, model names, original diffs/logs and user-supplied project/task text are preserved. Fixtures receive localized display strings. Both builds use the same components and catalog.
 

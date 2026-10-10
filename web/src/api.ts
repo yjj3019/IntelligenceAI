@@ -42,6 +42,10 @@ export function mutation<T>(
 export function message(error: unknown): string {
   if (error instanceof ApiError) {
     const safeCodes: Record<string, string> = {
+      fixture_execution_grant_required:
+        "An operator must provision an unexpired fixed-fixture capability before this task can be queued.",
+      fixture_run_not_available:
+        "This task cannot be queued in its current state. Refresh its saved status.",
       termination_receipt_required:
         "Recovery is blocked until a trusted termination receipt confirms the prior runner stopped. Do not clear its lease.",
       recovery_not_available:

@@ -16,7 +16,7 @@ from intelligenceai.web.config import Settings
 from intelligenceai.web.contracts import ApprovalInput, EmptyInput, MemberInput, TaskInput, preview
 from intelligenceai.web.errors import SafeErrors
 from intelligenceai.web.service import Problem, Service, session_data
-from intelligenceai.web.store import engine, users
+from intelligenceai.web.store import engine, execution_grants, now, users
 
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -210,14 +210,29 @@ def create_app(settings: Settings, *, db=None, testing=False):
     @app.get("/api/projects/{project_id}/connections")
     def connections(request: Request, project_id: str):
         with db.connect() as conn:
-            service.authorize(conn, actor(request)["id"], project_id)
+            project, _ = service.authorize(conn, actor(request)["id"], project_id)
+            grant = (
+                conn.execute(
+                    select(execution_grants).where(execution_grants.c.project_id == project_id)
+                )
+                .mappings()
+                .first()
+            )
+            fixture = bool(
+                grant
+                and grant["mode"] == "fixed-fixture"
+                and grant["expires_at"] > now()
+                and grant["policy_digest"] == project["policy_digest"]
+            )
         return {
             "execution_enabled": False,
             "providers": "DISABLED",
             "sandbox": "UNVERIFIED",
-            "runner": "NOT_CONFIGURED",
+            "runner": "FIXTURE_ONLY_CAPABILITY" if fixture else "NOT_CONFIGURED",
             "database": "POSTGRESQL" if db.dialect.name == "postgresql" else "TEST_FIXTURE_SQLITE",
             "external_effects": "DISABLED",
+            "fixture_execution": "AUTHORIZED" if fixture else "DISABLED",
+            "live_model": "NOTRUN",
         }
 
     @app.post("/api/projects/{project_id}/preview")
@@ -252,7 +267,12 @@ def create_app(settings: Settings, *, db=None, testing=False):
     @app.post("/api/projects/{project_id}/tasks/{task_id}/{action}")
     def action(request: Request, project_id: str, task_id: str, action: str, data: EmptyInput):
         user_id, key = mutation(request)
-        actions = {"cancel": service.cancel, "recover": service.recover, "reject": service.reject}
+        actions = {
+            "cancel": service.cancel,
+            "recover": service.recover,
+            "reject": service.reject,
+            "run-fixture": service.run_fixture,
+        }
         if action not in actions:
             raise Problem(404, "action_not_available")
         return actions[action](user_id, project_id, task_id, key)
