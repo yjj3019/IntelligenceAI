@@ -3,6 +3,7 @@
 Repository grants, state root and transports are operator configuration, never tool inputs.
 """
 
+import json
 import re
 import threading
 import uuid
@@ -14,6 +15,7 @@ from pydantic import Field
 from .contracts import Contract, Plan, State
 from .controller import Controller, fixture_plan
 from .ledger import Ledger
+from .ownership import TaskLease
 from .registry import registry
 from .security import SafetyError, digest, redact
 
@@ -74,10 +76,14 @@ class ControllerService:
             )
             # Do not re-dispatch old admissions or active invocations when a stdio host reconnects.
             for row in ledger.db.execute(
-                "SELECT id FROM tasks WHERE "
+                "SELECT id,data FROM tasks WHERE "
                 "state IN ('RUNNING','VERIFYING','REVIEWING','REPAIRING')"
             ).fetchall():
-                ledger.reconcile(row[0])
+                if json.loads(row[1])["repo_identity"] not in self.allowed_identities:
+                    continue
+                with TaskLease(self.root, row[0]) as lease:
+                    if lease.acquired:
+                        ledger.reconcile(row[0])
         finally:
             ledger.close()
 

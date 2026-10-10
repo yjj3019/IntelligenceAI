@@ -67,7 +67,9 @@ class Check(Contract):
     path: str
     required_keys: list[str] = Field(default_factory=list, max_length=64)
     required_symbols: list[str] = Field(default_factory=list, max_length=64)
-    expected_literals: dict[str, int | str | bool | None] = Field(default_factory=dict)
+    expected_literals: dict[str, int | str | bool | None] = Field(
+        default_factory=dict, max_length=64
+    )
 
     @field_validator("path")
     @classmethod
@@ -203,6 +205,8 @@ class Evidence(Contract):
     redacted_log: str
     timestamp: float
     live: bool = False
+    step_id: str | None = None
+    check_digest: str | None = None
 
 
 class Action(Contract):

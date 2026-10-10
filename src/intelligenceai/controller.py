@@ -112,10 +112,15 @@ class Controller:
             "initial": initial,
             "scenario": scenario,
         }
-        self.ledger.db.execute(
-            "UPDATE tasks SET data=?,state=? WHERE id=?",
-            (canonical(clean(data)), State.READY, task_id),
-        )
+        # Admission preparation can race cancellation. It cannot resurrect a cancelled
+        # task or adopt its newer generation, even when the worktree was just created.
+        with self.ledger.transaction():
+            changed = self.ledger.db.execute(
+                "UPDATE tasks SET data=?,state=? WHERE id=? AND state=? AND generation=?",
+                (canonical(clean(data)), State.READY, task_id, State.RECEIVED, task.generation),
+            ).rowcount
+            if not changed:
+                raise SafetyError("task cancelled or changed during admission preparation")
         return task_id
 
     def _crash(self, boundary: str):
@@ -182,7 +187,14 @@ class Controller:
         findings = []
         for step in plan.steps:
             if step.mode == "write":
-                evidence.append(fixture.verify(target, candidate.candidate_id, step.profile))
+                evidence.append(
+                    fixture.verify(target, candidate.candidate_id, step.profile).model_copy(
+                        update={
+                            "step_id": step.step_id,
+                            "check_digest": digest(["fixture-profile", step.profile]),
+                        }
+                    )
+                )
                 findings.extend(fixture.review(target, candidate.candidate_id, step.profile))
         step_rows = self.ledger.steps(tid, state.get("round_number", 0))
         for row in step_rows:
@@ -272,6 +284,14 @@ class Controller:
         return {}
 
     def run(self, task_id: str) -> dict:
+        from .ownership import TaskLease
+
+        with TaskLease(self.root, task_id) as lease:
+            if not lease.acquired:
+                raise SafetyError("another controller owns this task")
+            return self._run_owned(task_id)
+
+    def _run_owned(self, task_id: str) -> dict:
         task = self.ledger.task(task_id)
         if task["state"] in {
             State.COMPLETED,

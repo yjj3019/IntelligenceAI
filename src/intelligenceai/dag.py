@@ -34,9 +34,9 @@ def capture(target: Path, candidate) -> dict[str, bytes]:
     return payloads
 
 
-def inspect_step(step, payloads, candidate):
+def checks_for(step):
     checks = step.checks
-    if step.executor == "fixture" and not checks:
+    if step.executor == "fixture" and step.mode == "read_only" and not checks:
         name = fixture.profile_path(step.profile)
         checks = [
             Check(kind="python_ast", path=name, expected_literals={"ANSWER": 42})
@@ -48,7 +48,21 @@ def inspect_step(step, payloads, candidate):
                 expected_literals={"enabled": True, "version": 42},
             )
         ]
-    results = [checkers.inspect(check, payloads, candidate.candidate_id) for check in checks]
+    return checks
+
+
+def inspect_step(step, payloads, candidate):
+    checks = checks_for(step)
+    results = [
+        (
+            e.model_copy(
+                update={"step_id": step.step_id, "check_digest": digest(check.model_dump())}
+            ),
+            fs,
+        )
+        for check in checks
+        for e, fs in [checkers.inspect(check, payloads, candidate.candidate_id)]
+    ]
     evidence = [e.model_dump() for e, _ in results]
     findings = [f.model_dump() for _, fs in results for f in fs]
     status = (
@@ -128,7 +142,10 @@ def execute(controller, state):
             controller.ledger.step_start(tid, step.step_id, round_number, generation)
             controller._fixture_step(state, step)
             candidate = controller.candidate(tid)
-            finish(step, "SUCCEEDED", [], [])
+            status, evidence, findings = inspect_step(step, capture(target, candidate), candidate)
+            if controller.candidate(tid) != candidate:
+                raise SafetyError("candidate changed during writer checks")
+            finish(step, status, evidence, findings)
             continue
         payloads = capture(target, candidate)
         for step in ready:
