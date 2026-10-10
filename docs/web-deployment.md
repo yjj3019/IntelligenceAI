@@ -62,7 +62,7 @@ Private 콘솔에 작업을 저장해도 `BLOCKED`와 `HELD`로 기록됩니다.
 
 ## 공개 정적 Sites 배포
 
-[공개 소개·데모](https://intelligenceai.violet-pixie-4145.chatgpt.site)는 사용자 승인을 받은 새 Sites 프로젝트 하나에 배포했습니다. 접근 모드는 `public`이며 버전 1의 배포 결과는 `succeeded`입니다. [배포 기록](../deploy/public-site.json)에 project/version/deployment ID와 소스 commit을 보존합니다. 이후 수정에서는 이 project ID를 재사용하고 새 Site를 중복 생성하지 않습니다.
+[공개 소개·데모](https://intelligenceai.violet-pixie-4145.chatgpt.site)는 사용자 승인을 받은 새 Sites 프로젝트 하나에 배포했습니다. 접근 모드는 `public`이며 최신 버전 2의 배포 결과는 `succeeded`입니다. [배포 기록](../deploy/public-site.json)에 project/version/deployment ID와 소스 commit을 보존합니다. 이후 수정에서는 이 project ID를 재사용하고 새 Site를 중복 생성하지 않습니다.
 
 GUI의 공개 빌드를 단일 `dist/index.html`로 복사한 전용 Site checkout을 사용했습니다. 공식 `site-workflow.mjs`의 숨겨진 stdin으로 메모리의 단기 소스 자격 증명을 전달하고, 정확한 소스를 push한 뒤 두 파일만 포함한 archive를 저장·배포했습니다. 자격 증명은 argv·파일·로그에 저장하지 않았으며 Git 작성자는 일반 Sites 이름을 사용했습니다. Windows에서는 이미 설치된 Git Bash를 해당 프로세스의 PATH에 앞세우고 GNU tar의 `TAR_OPTIONS=--force-local`로 드라이브 문자를 로컬 경로로 처리했습니다. 전역 설정, WSL·브라우저 설치, 포트 개방이나 터널은 사용하지 않았습니다.
 
