@@ -12,6 +12,8 @@ IntelligenceAI는 AI 작업의 실행 상태와 변경 후보, 검사 근거, �
 
 공개 데모에는 실제 작업·로그인이 없습니다. private API는 별도의 PostgreSQL 원장과 OIDC 서버 세션을 사용하고 객체별 프로젝트 권한을 확인합니다. 제출 작업은 HELD 대기에 기록됩니다. 운영자가 만료되는 프로젝트 실행 권한을 설정한 뒤 사용자가 직접 요청하면 [고정 fixture supervisor](docs/web-runner.md)가 실제 core DAG를 실행합니다. 후보는 합성 데이터이며 검사는 정적 파서만 사용합니다. 유료 모델·외부 효과는 비활성이고 OS 격리는 미검증 상태입니다. task·generation별 core 저장소를 분리하며 로컬 CLI의 공유 SQLite와 파일 잠금을 HTTP로 노출하지 않습니다.
 
+완료한 GUI 범위는 고정 fixture의 제출·대기열·core DAG 실행·정적 결과·승인·취소·복구 연결입니다. 임의 저장소 코드·shell·vendor CLI 실행은 제공하지 않습니다. 운영 인증·DB·TLS 검증과 최신 supervisor UI의 실제 브라우저 QA는 미완료이며, 전체 AI 제품의 완성을 뜻하지 않습니다. 검증 근거와 NOTRUN 항목은 [검증 기록](docs/web-validation.md)에 구분했습니다.
+
 [공개 소개·KO/EN 데모](https://intelligenceai.violet-pixie-4145.chatgpt.site)를 Sites에 배포했습니다. 합성 데이터만 표시하는 정적 사이트이며 로그인이나 프로젝트 쓰기 API는 없습니다. 배포 ID와 소스는 [공개 배포 기록](deploy/public-site.json)에 보존합니다.
 
 [웹 구조](docs/web-architecture.md) · [API 계약](docs/web-api.md) · [웹 보안](docs/web-security.md) · [배포 절차](docs/web-deployment.md) · [검증 기록](docs/web-validation.md)

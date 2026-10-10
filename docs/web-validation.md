@@ -1,10 +1,20 @@
 # 웹 GUI 검증 기록
 
-## 최종 검토 수정
+## fixture 통합 최종 검증
 
 완료 후 취소와 취소 후 완료는 현재 generation의 검증된 정적 receipt와 lease 종료를 근거로 `CANCELLED`에 수렴합니다. 완료 proof가 없는 `FINISHED`는 취소 완료로 과장하지 않고 거부합니다. 미시작 receipt는 별도 `kind: never_started`로 조회·표시하며 steps를 읽지 않습니다. SSE의 artifact ID·digest·generation 변경은 후보 본문을 무효화하고 지연된 이전 응답을 폐기합니다. 만료·정책 불일치 권한의 100개 작업 뒤에 있는 정상 프로젝트를 같은 claim 호출에서 찾도록 keyset 페이지를 순회합니다.
 
-수정된 frontend는 component/locale/API mock 회귀 32개, lint, typecheck, private/public build를 통과했습니다. 실제 core fixture 완료→취소→복구 2개 profile, 미시작 receipt 및 큐 진행 회귀는 로컬에서 통과했습니다. 이 검증은 실제 모델 실행 또는 OS sandbox 성공을 뜻하지 않습니다. 새 supervisor UI의 지원 브라우저 도구는 현재 없어 실제 브라우저 검증은 NOTRUN입니다. 최종 커밋의 PostgreSQL 별도 pool 완료/취소 경합과 기존 8환경 core matrix 결과는 draft PR의 해당 head SHA CI에서 확인합니다. 최종 배포는 사용자 요청에 따라 제외했습니다.
+검증한 runtime SHA는 `eff66f1105c7ff59a6fa042887fc925c2496d2e6`입니다. [push CI](https://github.com/yjj3019/IntelligenceAI/actions/runs/38057566137)와 [PR CI](https://github.com/yjj3019/IntelligenceAI/actions/runs/38057569304)는 기존 8환경 OS/Python core matrix와 web job을 포함해 각각 9/9 성공했습니다. SQLite는 65 passed·6 skipped, 실제 임시 PostgreSQL 17.6은 71 passed, signed loopback OIDC/API/supervisor는 1 passed입니다. frontend 32개 회귀, lint·typecheck·private/public build가 통과했고 release 115파일의 Gitleaks 8.30.1 결과는 0 findings입니다.
+
+로컬 Windows core 전체 회귀는 171 passed·12 skipped, exit 0으로 종료됐습니다. 48분 12초가 걸렸고 최장 테스트는 94.80초였습니다. 진단 중 자체 pytest의 자식 Git 명령과 테스트 진행을 확인했으며 무한 대기나 중복 실행은 없었습니다. 독립 아키텍처/UI 소스 재검토에서는 이전 지적의 수정을 확인했고 추가 중요 결함은 발견하지 않았습니다. 이 결론은 해당 runtime 소스의 정적 검토이며 실제 브라우저 실행 검증을 포함하지 않습니다.
+
+독립 브라우저 QA 작업은 공식 IAB 도구 초기화를 두 번 시도했으나 `cannot locate required Windows platform directory: HRESULT 0x80070003`로 실패했습니다. 최신 supervisor UI의 모든 신규 브라우저 시나리오는 NOTRUN입니다. 해당 작업은 코드 수정이나 QA 서버 실행을 하지 않았으며 브라우저 설치·보안 우회도 하지 않았습니다. component/API/HTTP fullstack 통과와 실제 브라우저 QA를 구분합니다.
+
+완료 범위는 고정 fixture·정적 검사 통합입니다. 실제 모델·임의 저장소 코드·shell·vendor CLI·외부 효과는 비활성이며, 운영 인증·DB·TLS·OS sandbox는 미검증입니다. fixture/parser 성공을 실제 모델 성공으로 표시하지 않습니다. 최종 배포는 사용자 요청에 따라 제외했고 기존 Sites 정적 데모를 유지했습니다.
+
+## 이전 GUI baseline 검증 이력
+
+아래 수치와 브라우저 결과는 당시 후보의 이력입니다. 최신 fixture 통합의 검증 범위와 NOTRUN은 위 절을 기준으로 확인합니다.
 
 2026-10-10, Windows의 GUI 전용 checkout에서 Python 3.11.15(win-amd64)·Node 24.15.0(x64)로 확인했습니다. 이 기록은 로컬 검증과 실제 운영 연결을 구분합니다. 합성 데이터만 포함한 정적 Sites 공개 배포를 완료했습니다. private 서버·DB·OIDC 등록은 생성하지 않았으며 유료 모델과 외부 효과를 실행하지 않았습니다.
 
