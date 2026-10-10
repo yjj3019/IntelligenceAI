@@ -392,16 +392,25 @@ def test_cancellation_is_requested_before_device_cleanup_report(fixture, tmp_pat
     assert machine(f, "result", report(bound)).status_code == 409
     assert machine(f, "result", report(bound, outcome="CANCELLED", text="")).status_code == 200
     assert f["client"].get(f["base"] + f"/tasks/{tid}").json()["state"] == "CANCELLED"
+    again = f["client"].post(
+        f["base"] + f"/tasks/{tid}/cancel", json={}, headers={**headers, "Idempotency-Key": uid()}
+    )
+    assert again.json()["state"] == "CANCELLED"
+    with f["db"].connect() as conn:
+        saved = conn.execute(select(local_cli_requests.c.result)).scalar_one()
+        assert saved["scope"] == "PC_REPORTED" and saved["local_termination_confirmed"] is False
 
 
 def test_expired_lease_stale_upload_does_not_replay(fixture, tmp_path):
     f = fixture
-    queued(f, tmp_path)
+    tid, path, _, _, _, _ = queued(f, tmp_path)
     _, bound = claim(f)
     assert machine(f, "start", bound).status_code == 200
     with f["db"].begin() as conn:
         conn.execute(update(pc_attempts).values(expires_at=now() - 1))
     assert machine(f, "result", report(bound)).status_code == 409
+    assert f["client"].get(path).json()["requests"][0]["state"] == "UNKNOWN"
+    assert f["client"].get(f["base"] + f"/tasks/{tid}").json()["state"] == "BLOCKED"
     assert machine(f, "claim").json()["attempt"] is None
     with f["db"].connect() as conn:
         assert conn.execute(select(local_cli_requests.c.state)).scalar_one() == "UNKNOWN"

@@ -16,6 +16,7 @@ from intelligenceai.web.store import (
     members,
     now,
     paid_reviews,
+    pc_attempts,
     pc_runners,
     sessions,
     tasks,
@@ -80,6 +81,27 @@ class LocalCLI:
                     .limit(10)
                 ).mappings()
             ]
+            expired = set(
+                conn.execute(
+                    select(pc_attempts.c.request_id).where(
+                        pc_attempts.c.request_id.in_([row["id"] for row in records]),
+                        pc_attempts.c.state.in_(["CLAIMED", "STARTED"]),
+                        pc_attempts.c.expires_at <= now(),
+                    )
+                ).scalars()
+            )
+            for record in records:
+                if record["id"] in expired:
+                    record["state"] = "UNKNOWN"
+                    record["result"] = {
+                        "scope": "PC_REPORTED",
+                        "live_model": "UNKNOWN",
+                        "availability": "EXECUTION_ERROR",
+                        "local_termination_confirmed": False,
+                        "remote_cancellation": "UNKNOWN",
+                        "cli_invocations": None,
+                        "model_calls": None,
+                    }
             return {
                 "profiles": available,
                 "requests": records,
