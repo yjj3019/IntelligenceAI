@@ -343,7 +343,36 @@ class Service:
                             },
                         )
                     )
-            if job["state"] == "FINISHED" and not confirmed_complete:
+            from intelligenceai.web.store import paid_reviews
+
+            paid = (
+                conn.execute(
+                    select(paid_reviews)
+                    .where(
+                        paid_reviews.c.task_id == task_id,
+                        paid_reviews.c.generation == task["generation"],
+                    )
+                    .with_for_update()
+                )
+                .mappings()
+                .first()
+            )
+            if paid:
+                confirmed = bool(
+                    paid["state"] == "RESERVED"
+                    and job["lease_token"] is None
+                    or paid["termination_confirmed"]
+                    and paid["state"] in {"SETTLED", "IMPORTED", "TERMINATED"}
+                    and job["lease_token"] is None
+                )
+                if paid["state"] == "RESERVED" and confirmed:
+                    from intelligenceai.web.paid_store import PaidLedger
+
+                    PaidLedger(self.db).release_unsent(conn, paid)
+                conn.execute(
+                    update(paid_reviews).where(paid_reviews.c.id == paid["id"]).values(revoked=True)
+                )
+            if job["state"] == "FINISHED" and not confirmed_complete and not paid:
                 raise Problem(409, "termination_receipt_required")
             state = "CANCELLED" if confirmed else "CANCEL_REQUESTED"
             conn.execute(

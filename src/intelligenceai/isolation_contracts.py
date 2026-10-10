@@ -69,7 +69,7 @@ class LaunchManifest(Contract):
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None
     mode: Mode
     host_os: HostOS
-    backend: Literal["linux-bwrap-offline-v1"]
+    backend: Literal["linux-bwrap-offline-v1", "linux-bwrap-claude-relay-v1"]
     backend_binary_digest: Digest
     vendor_binary_digest: Digest
     runner_digest: Digest

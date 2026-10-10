@@ -1,5 +1,10 @@
 # IntelligenceAI
 
+[Claude 읽기 전용 transport](docs/claude-transport.ko.md)를 별도 Linux worker에
+추가했다. 실제 HTTP broker·PostgreSQL 예산 예약·namespace relay·cgroup 종료
+검사를 구현했다. 검증에는 가짜 provider를 사용하며 실제 유료 호출·운영 배포와
+GUI 유료 실행 admission은 아직 완료하지 않았다.
+
 승인된 고정 fake 프로세스의 DB 일회성 예약·실행 직전 권한 검사·private 결과·취소/복구 경로는 [합성 vendor 실행 계약](docs/web-approved-vendor.md)에 정리했습니다. 모델 호출은 0회이며 실제 provider와 OS 격리는 미검증입니다.
 
 Provider 격리 후속 구현으로 [내부 실행 계약과 Linux 오프라인 probe](docs/provider-isolation.ko.md)를 추가했습니다. 연결 화면에서 OS·provider·실행 모드별 차단 사유를 확인할 수 있습니다. 실제 provider·유료 모델은 계속 비활성화하며 오프라인 격리 검사를 실제 모델 실행 성공으로 계산하지 않습니다.

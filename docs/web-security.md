@@ -1,5 +1,12 @@
 # Web security and remaining evidence
 
+The [Claude transport](claude-transport.md) keeps provider credentials in an
+operator-injected broker fd/memory callback, requires one-time durable HTTP
+admission and drains upstream accounting after local cancellation. The CLI is
+tool-free in a network namespace and an existing delegated cgroup. Operational
+model/pricing evidence, vendor compatibility and actual target enforcement are
+still required; fake-wire CI cannot supply those attestations.
+
 The public static artifact is a synthetic read-only demo. It has no private API, authentication bypass or public-write endpoint. The standalone CSP allows only the exact inline script/style hashes and disallows all network connections, forms, objects and base URLs. The server-hosted build uses a self-only script/style policy, no external fonts, frame denial, `nosniff`, no-referrer and no-store. Hosting headers remain the responsibility of the selected platform.
 
 Production private startup requires PostgreSQL, HTTPS origin/issuer and an existing OIDC registration. It rejects SQLite and insecure sessions. There is no environment flag enabling test users or an auth bypass. The explicit `testing=True` factory exists only for trusted test code; container recipes exclude `tests/` and fixture issuers. Production cookies use `__Host-iai_session`, Secure, HttpOnly, SameSite=Lax, path `/` and no Domain. No provider token is returned to browser storage.

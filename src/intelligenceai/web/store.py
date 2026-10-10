@@ -142,6 +142,40 @@ vendor_invocations = Table(
     Column("created_at", BigInteger, nullable=False),
     UniqueConstraint("task_id", "generation"),
 )
+paid_budgets = Table(
+    "web_paid_budgets",
+    metadata,
+    Column("project_id", ForeignKey(projects.c.id), primary_key=True),
+    Column("policy_digest", String(64), nullable=False),
+    Column("limit_microusd", BigInteger, nullable=False),
+    Column("held_microusd", BigInteger, nullable=False, default=0),
+    Column("spent_microusd", BigInteger, nullable=False, default=0),
+    Column("expires_at", BigInteger, nullable=False),
+)
+paid_reviews = Table(
+    "web_paid_reviews",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("project_id", ForeignKey(projects.c.id), nullable=False),
+    Column("task_id", ForeignKey(tasks.c.id), nullable=False),
+    Column("generation", Integer, nullable=False),
+    Column("actor_id", ForeignKey(users.c.id), nullable=False),
+    Column("session_hash", ForeignKey(sessions.c.token_hash), nullable=False),
+    Column("approved_by", ForeignKey(users.c.id), nullable=False),
+    Column("intent", JSON, nullable=False),
+    Column("intent_digest", String(64), nullable=False),
+    Column("receipt_digest", String(64), nullable=False),
+    Column("revoked", Boolean, nullable=False, default=False),
+    Column("termination_confirmed", Boolean, nullable=False, default=False),
+    Column("state", String(32), nullable=False),
+    Column("hold_microusd", BigInteger, nullable=False),
+    Column("request_digest", String(64)),
+    Column("result", JSON),
+    Column("created_at", BigInteger, nullable=False),
+    UniqueConstraint("task_id", "generation"),
+)
+
+
 artifacts = Table(
     "web_artifacts",
     metadata,

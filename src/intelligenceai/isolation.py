@@ -92,7 +92,7 @@ class LinuxOfflineExecutor:
         manifest.revalidate()
         if platform.system() != "Linux" or manifest.host_os != "Linux":
             raise SafetyError("isolation_backend_unsupported")
-        if manifest.provider != "isolation-probe":
+        if manifest.provider != "isolation-probe" or manifest.backend != "linux-bwrap-offline-v1":
             raise SafetyError("live_provider_backend_unavailable")
         if manifest.network.provider_hosts or manifest.credential_refs:
             raise SafetyError("offline_probe_boundary")
