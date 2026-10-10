@@ -165,13 +165,16 @@ class LinuxOfflineExecutor:
 
     def run(self, manifest: LaunchManifest, cancel: threading.Event) -> ProbeResult:
         argv = self.command(manifest)
-        if cancel.is_set():
-            raise SafetyError("probe_cancelled_before_launch")
-        # The operator must keep the image/workspace immutable between pin and launch.
-        # No durable receipt claims success; independent adversarial evidence is required.
-        limit = time.monotonic() + max(0, manifest.deadline - time.time())
         output = bytearray()
         truncated = threading.Event()
+        # The operator must keep the image/workspace immutable between pin and launch.
+        # No durable receipt claims success; independent adversarial evidence is required.
+        remaining = manifest.deadline - time.time()
+        if not 0 < remaining <= 300:
+            raise SafetyError("invalid_probe_deadline")
+        if cancel.is_set():
+            raise SafetyError("probe_cancelled_before_launch")
+        limit = time.monotonic() + remaining
         child = subprocess.Popen(
             argv,
             stdin=subprocess.DEVNULL,

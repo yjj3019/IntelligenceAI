@@ -6,12 +6,16 @@ import socket
 import subprocess
 import threading
 import time
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
+from intelligenceai import isolation
 from intelligenceai.isolation import LinuxOfflineExecutor, file_digest, tree_digest
 from intelligenceai.isolation_contracts import (
     CapabilityEvidence,
@@ -154,6 +158,50 @@ def test_fixed_offline_command_cannot_become_vendor_launch(tmp_path, monkeypatch
     (Path(manifest.image.path) / "probe").write_bytes(b"drift")
     with pytest.raises(SafetyError, match="image_digest_drift"):
         LinuxOfflineExecutor(backend).command(manifest)
+
+
+@pytest.mark.parametrize("boundary", ["at_deadline", "past_deadline", "clock_rollback", "cancel"])
+def test_hashing_cannot_launch_expired_or_cancelled_manifest(tmp_path, monkeypatch, boundary):
+    backend, manifest = manifest_for(tmp_path)
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    clock = [manifest.deadline - 1]
+    monkeypatch.setattr(
+        isolation, "time", SimpleNamespace(time=lambda: clock[0], monotonic=time.monotonic)
+    )
+    cancel = threading.Event()
+    real_hash = isolation.tree_digest
+
+    def hashing(root):
+        value = real_hash(root)
+        if root == Path(manifest.workspace.path):
+            if boundary == "cancel":
+                cancel.set()
+            elif boundary == "clock_rollback":
+                clock[0] = manifest.deadline - 301
+            else:
+                clock[0] = manifest.deadline + (1 if boundary == "past_deadline" else 0)
+        return value
+
+    monkeypatch.setattr(isolation, "tree_digest", hashing)
+    launch = Mock(side_effect=AssertionError("expired/cancelled manifest reached spawn"))
+    monkeypatch.setattr(isolation.subprocess, "Popen", launch)
+    expected = "probe_cancelled_before_launch" if boundary == "cancel" else "invalid_probe_deadline"
+    with pytest.raises(SafetyError, match=expected):
+        LinuxOfflineExecutor(backend).run(manifest, cancel)
+    launch.assert_not_called()
+
+
+def test_unexpired_offline_manifest_preserves_single_launch(tmp_path, monkeypatch):
+    backend, manifest = manifest_for(tmp_path)
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    child = Mock(stdout=BytesIO(b"synthetic contract output; no OS/model evidence"))
+    child.poll.return_value = 0
+    child.wait.return_value = 0
+    launch = Mock(return_value=child)
+    monkeypatch.setattr(isolation.subprocess, "Popen", launch)
+    result = LinuxOfflineExecutor(backend).run(manifest, threading.Event())
+    launch.assert_called_once()
+    assert result.status == "UNVERIFIED" and result.live_model == "NOTRUN"
 
 
 def test_hook_pollution_rejected_before_spawn(tmp_path, monkeypatch):
