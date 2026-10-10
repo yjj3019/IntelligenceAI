@@ -44,6 +44,8 @@ class PaidLedger:
         )
 
     def locked(self, conn, intent, session_hash, approved_by, *, check_current=True):
+        if approved_by != intent.approved_by:
+            raise SafetyError("paid_approver_binding_changed")
         approval = intent.approval
         project, _ = self.service.authorize(
             conn, approval.actor_id, approval.project_id, {"owner", "operator"}, lock=True
@@ -226,7 +228,8 @@ class PaidLedger:
             if (
                 row["revoked"]
                 or row["state"] != "RESERVED"
-                or (row["intent_digest"] != intent.binding)
+                or row["intent_digest"] != intent.binding
+                or digest(row["intent"]) != intent.binding
             ):
                 raise SafetyError("paid_launch_already_consumed")
             conn.execute(

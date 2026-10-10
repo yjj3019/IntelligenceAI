@@ -20,7 +20,12 @@ from sqlalchemy import create_engine, insert, select, update
 from test_approved_vendor import seeded_review
 from test_web import fixture as shared_fixture
 
-from intelligenceai.isolation_contracts import PinnedRoot
+from intelligenceai.isolation_contracts import (
+    InvocationBudget,
+    LaunchManifest,
+    NetworkPolicy,
+    PinnedRoot,
+)
 from intelligenceai.security import SafetyError, canonical, digest
 from intelligenceai.web.claude_bridge import receive
 from intelligenceai.web.claude_broker import ClaudeBroker, bounded_request, stream_result
@@ -527,6 +532,50 @@ def test_live_runtime_rejects_sqlite_and_no_unsafe_cli_flags(fixture, tmp_path):
     if fixture["db"].dialect.name == "sqlite":
         with pytest.raises(SafetyError, match="postgresql"):
             ClaudeReviewRunner(fixture["db"], tmp_path, tmp_path, tmp_path, None, None)
+
+
+@pytest.mark.parametrize("changed", ["invocation", "session"])
+def test_paid_invocation_and_exact_session_are_bound_before_any_launch(fixture, changed):
+    ledger, intent, profile, prompt = reservation(fixture)
+    row, _ = stored(fixture, intent)
+    manifest = LaunchManifest(
+        invocation_id=uid() if changed == "invocation" else intent.invocation_id,
+        task_id=intent.approval.task_id,
+        project_id=intent.approval.project_id,
+        actor_id=intent.approval.actor_id,
+        generation=1,
+        provider="claude",
+        model=profile.model,
+        effort=profile.effort,
+        mode="read_only",
+        host_os="Linux",
+        backend="linux-bwrap-claude-relay-v1",
+        backend_binary_digest=profile.backend_digest,
+        vendor_binary_digest=profile.cli_digest,
+        runner_digest="a" * 64,
+        policy_digest=profile.policy_digest,
+        image=profile.image,
+        workspace=profile.image,
+        network=NetworkPolicy(provider_hosts=("api.anthropic.com",)),
+        overlay_digest="a" * 64,
+        caller_context_digest="a" * 64,
+        deadline=float(now() + 60),
+        budget=InvocationBudget(max_invocations=1, max_cost_microusd=240),
+    )
+    runner = ClaudeReviewRunner.__new__(ClaudeReviewRunner)
+    runner.ledger = ledger
+    with pytest.raises(SafetyError, match="invocation_or_session"):
+        runner.run(
+            manifest,
+            profile,
+            intent,
+            (),
+            prompt,
+            session_hash=row["session_hash"],
+            approved_by=intent.approved_by,
+            cancel=__import__("threading").Event(),
+        )
+    assert stored(fixture, intent)[0]["state"] == "RESERVED"
 
 
 @pytest.mark.skipif(os.name == "nt", reason="actual Unix relay is Linux/macOS only")

@@ -248,6 +248,18 @@ class ClaudeReviewRunner:
         if prompt != self.ledger.review_prompt(intent):
             raise SafetyError("paid_candidate_prompt_changed")
         require_no_secrets(prompt)
+        if (
+            manifest.invocation_id != intent.invocation_id
+            or manifest.caller_context_digest
+            != digest(
+                {
+                    "actor_id": intent.approval.actor_id,
+                    "project_id": intent.approval.project_id,
+                    "session_hash": session_hash,
+                }
+            )
+        ):
+            raise SafetyError("paid_invocation_or_session_binding_changed")
         if intent.approval.manifest_digest != manifest.binding or (
             manifest.overlay_digest
             != digest(

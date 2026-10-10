@@ -17,6 +17,8 @@ provider execution.
 The manifest overlay digest binds profile digest, prompt digest, approved budget
 and approver ID. The paid approval binds candidate, policy, evidence, destination,
 generation, actor and expiry. Its destination must be `private-model-review`.
+The manifest invocation ID must equal the durable invocation ID. Its caller
+context digest binds actor ID, project ID and the exact server-session hash.
 A private review or candidate application approval cannot authorize a paid call.
 The separate paid signer grants that scope explicitly. The server derives the
 prompt from private candidate artifact bytes; a browser cannot select a command,
