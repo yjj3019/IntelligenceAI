@@ -637,7 +637,13 @@ function WorkspaceApp() {
   }, [current.page, task?.id, active, revision]);
 
   function keyFor(operation: string, payload: unknown) {
-    const fingerprint = operation + JSON.stringify(payload);
+    const fingerprint =
+      session?.user.id +
+      ":" +
+      project?.id +
+      ":" +
+      operation +
+      JSON.stringify(payload);
     if (!requestKeys.current.has(fingerprint))
       requestKeys.current.set(fingerprint, crypto.randomUUID());
     return requestKeys.current.get(fingerprint)!;
@@ -660,12 +666,25 @@ function WorkspaceApp() {
         payload,
         method,
       );
+      // Preserve uncertain retries, then release the key after a confirmed response.
+      requestKeys.current.delete(
+        session.user.id +
+          ":" +
+          project.id +
+          ":" +
+          operation +
+          JSON.stringify(payload),
+      );
       setFeedback(
         result.state === "CANCEL_REQUESTED"
           ? "Cancellation requested. Termination has not been confirmed."
           : "Saved to the private ledger. Execution remains disabled.",
       );
-      if (operation === "tasks" && result.id) navigate("task", result.id);
+      if (operation === "tasks" && result.id) {
+        setForm({ title: "", request: "", profile: "python-review" });
+        setPlan(null);
+        navigate("task", result.id);
+      }
       setRevision((v) => v + 1);
     } catch (err) {
       setError(message(err));

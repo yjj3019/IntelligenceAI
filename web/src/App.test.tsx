@@ -142,6 +142,53 @@ function privateFetch(status = 200) {
 }
 
 describe("private boundary and failure flows", () => {
+  it("keeps a mutation key after lost acknowledgement and releases it for the next confirmed intent", async () => {
+    history.replaceState({}, "", "/app/task");
+    const mock = privateFetch();
+    const base = mock.getMockImplementation()!;
+    let cancellationCalls = 0;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/cancel")) {
+        cancellationCalls += 1;
+        if (cancellationCalls === 1) throw new Error("lost acknowledgement");
+        return new Response(JSON.stringify({ state: "CANCEL_REQUESTED" }), {
+          status: 200,
+        });
+      }
+      return base(input, options);
+    });
+    render(<App />);
+    await screen.findByRole("heading", {
+      name: "<img src=x onerror=alert(1)>",
+    });
+    const confirmCancellation = () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Request cancellation" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Confirm cancellation" }),
+      );
+    };
+    confirmCancellation();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Connection interrupted",
+    );
+    confirmCancellation();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Termination has not been confirmed",
+    );
+    confirmCancellation();
+    await waitFor(() => expect(cancellationCalls).toBe(3));
+    const requests = mock.mock.calls.filter(([path]) =>
+      String(path).endsWith("/cancel"),
+    );
+    const key = (index: number) =>
+      (requests[index][1]?.headers as Record<string, string>)[
+        "Idempotency-Key"
+      ];
+    expect(key(0)).toBe(key(1));
+    expect(key(2)).not.toBe(key(1));
+  });
   it("reauthorizes finite stream reconnects and clears revoked content without a manual refresh", async () => {
     history.replaceState({}, "", "/app/task");
     const mock = privateFetch();

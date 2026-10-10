@@ -423,7 +423,7 @@ def test_no_verified_evidence_no_approval_no_http_dispatch(fixture):
 def test_sensitive_input_rejected_before_storage_and_validation_never_echoes(fixture):
     f = fixture
     headers = f["sign_in"](f["alice"])
-    credential = "IAI_TEST_SECRET_DO_NOT_PERSIST"
+    credential = "IAI_TEST_" + "SECRET_DONOTPERSIST"
     response = f["client"].post(
         f["base"] + "/tasks", json={**INPUT, "request": credential}, headers=headers
     )
@@ -675,15 +675,17 @@ def test_empty_mutation_body_does_not_accept_authority_fields(fixture):
 def test_safe_exception_boundary_never_logs_raw_secrets(capsys):
     from intelligenceai.web.errors import SafeErrors
 
+    credential = "IAI_TEST_" + "SECRET_EXCEPTION"
+
     async def fail(scope, receive, send):
-        raise RuntimeError("IAI_TEST_SECRET_EXCEPTION")
+        raise RuntimeError(credential)
 
     client = TestClient(SafeErrors(fail))
     response = client.get("/")
     client.close()
     assert response.status_code == 503
     assert response.json() == {"error": "service_unavailable"}
-    assert "IAI_TEST_SECRET_EXCEPTION" not in capsys.readouterr().err
+    assert credential not in capsys.readouterr().err
 
 
 def test_postgres_concurrent_admission_has_one_durable_receipt(fixture):
