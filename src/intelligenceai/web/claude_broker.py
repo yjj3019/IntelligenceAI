@@ -49,6 +49,7 @@ def bounded_request(raw, profile):
         "output_config",
         "temperature",
         "stop_sequences",
+        "thinking",
     }:
         raise SafetyError("claude_unknown_request_fields")
     if (
@@ -89,22 +90,41 @@ def bounded_request(raw, profile):
     }
     if "system" in value:
         safe["system"] = text_blocks(value["system"])
+    if "thinking" in value:
+        thinking = value["thinking"]
+        if not isinstance(thinking, dict) or set(thinking) - {"type", "budget_tokens", "display"}:
+            raise SafetyError("claude_thinking_invalid")
+        kind = thinking.get("type")
+        if thinking.get("display", "omitted") not in {"omitted", "summarized"}:
+            raise SafetyError("claude_thinking_display_invalid")
+        if kind in {"adaptive", "disabled"}:
+            if "budget_tokens" in thinking or (kind == "disabled" and "display" in thinking):
+                raise SafetyError("claude_thinking_invalid")
+        elif kind == "enabled":
+            budget = thinking.get("budget_tokens")
+            if type(budget) is not int or not 1024 <= budget < safe["max_tokens"]:
+                raise SafetyError("claude_thinking_budget_invalid")
+        else:
+            raise SafetyError("claude_thinking_invalid")
+        # Thinking shares the bounded max_tokens and output price ceiling.
+        safe["thinking"] = thinking
     # Drop client metadata, stop sequences, temperature and all client headers.
     require_no_secrets(safe)
     return canonical(safe).encode()
 
 
 def stream_result(raw, profile):
-    """Only a complete text-only terminal stream with observed usage settles funds."""
+    """Settle complete bounded text/thinking streams; retain only answer text."""
     if len(raw) > MAX_RESPONSE:
         raise SafetyError("claude_response_limit")
     try:
         wire = raw.decode("utf-8").replace("\r\n", "\n")
     except UnicodeDecodeError:
         raise SafetyError("claude_stream_invalid") from None
-    started = stopped = delta_seen = False
+    started = stopped = delta_seen = terminal = False
     input_tokens = output_tokens = None
-    blocks, closed, chunks = set(), set(), []
+    blocks, closed, chunks = {}, set(), []
+    signatures = set()
     for frame in wire.split("\n\n"):
         if not frame.strip():
             continue
@@ -154,36 +174,87 @@ def stream_result(raw, profile):
                 or index < 0
                 or index in blocks
                 or delta_seen
-                or (block.get("type") != "text" or not isinstance(block.get("text"), str))
+                or not isinstance(block, dict)
+                or block.get("type") not in {"text", "thinking", "redacted_thinking"}
             ):
-                raise SafetyError("claude_text_only_response_required")
-            blocks.add(index)
-            chunks.append(block["text"])
+                raise SafetyError("claude_bounded_response_required")
+            kind = block["type"]
+            allowed = {
+                "text": {"type", "text"},
+                "thinking": {"type", "thinking", "signature"},
+                "redacted_thinking": {"type", "data"},
+            }[kind]
+            field = {"text": "text", "thinking": "thinking", "redacted_thinking": "data"}[kind]
+            if set(block) - allowed or not isinstance(block.get(field), str):
+                raise SafetyError("claude_content_block_invalid")
+            if kind == "thinking":
+                if not isinstance(block.get("signature", ""), str):
+                    raise SafetyError("claude_thinking_signature_invalid")
+                if block.get("signature"):
+                    signatures.add(index)
+            blocks[index] = kind
+            if kind == "text":
+                chunks.append(block["text"])
         elif event == "content_block_delta":
             index, delta = value.get("index"), value.get("delta", {})
-            if (
-                index not in blocks - closed
-                or delta_seen
-                or (delta.get("type") != "text_delta" or not isinstance(delta.get("text"), str))
-            ):
+            if index not in blocks.keys() - closed or delta_seen or not isinstance(delta, dict):
                 raise SafetyError("claude_content_delta_invalid")
-            chunks.append(delta["text"])
+            if (
+                blocks[index] == "text"
+                and set(delta) == {"type", "text"}
+                and (delta["type"] == "text_delta" and isinstance(delta["text"], str))
+            ):
+                chunks.append(delta["text"])
+            elif (
+                blocks[index] == "thinking"
+                and index not in signatures
+                and (
+                    set(delta) == {"type", "thinking"}
+                    and delta["type"] == "thinking_delta"
+                    and isinstance(delta["thinking"], str)
+                )
+            ):
+                pass  # Never persist thinking summaries in the private review or audit.
+            elif (
+                blocks[index] == "thinking"
+                and index not in signatures
+                and (
+                    set(delta) == {"type", "signature"}
+                    and delta["type"] == "signature_delta"
+                    and isinstance(delta["signature"], str)
+                    and delta["signature"]
+                )
+            ):
+                signatures.add(index)
+            else:
+                raise SafetyError("claude_content_delta_invalid")
         elif event == "content_block_stop":
-            if value.get("index") not in blocks - closed:
+            index = value.get("index")
+            if index not in blocks.keys() - closed or (
+                blocks[index] == "thinking" and index not in signatures
+            ):
                 raise SafetyError("claude_content_stop_invalid")
-            closed.add(value["index"])
+            closed.add(index)
         elif event == "message_delta":
             usage = value.get("usage", {})
+            delta = value.get("delta", {})
+            cumulative = usage.get("output_tokens")
             if (
-                closed != blocks
-                or delta_seen
+                closed != blocks.keys()
+                or not isinstance(delta, dict)
+                or set(delta) - {"stop_reason", "stop_sequence"}
+                or delta.get("stop_reason") not in {None, "end_turn"}
+                or delta.get("stop_sequence") is not None
                 or set(usage) != {"output_tokens"}
-                or (value.get("delta", {}).get("stop_reason") != "end_turn")
+                or type(cumulative) is not int
+                or type(output_tokens) is not int
+                or cumulative < output_tokens
             ):
                 raise SafetyError("claude_terminal_usage_required")
-            delta_seen, output_tokens = True, usage["output_tokens"]
+            delta_seen, output_tokens = True, cumulative
+            terminal = terminal or delta.get("stop_reason") == "end_turn"
         elif event == "message_stop":
-            if not delta_seen or closed != blocks:
+            if not terminal or closed != blocks.keys():
                 raise SafetyError("claude_terminal_frame_required")
             stopped = True
         else:

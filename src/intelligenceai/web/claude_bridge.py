@@ -10,8 +10,21 @@ import struct
 import subprocess
 import sys
 import threading
+from urllib.parse import urlsplit
 
 LIMIT = 2 * 1024 * 1024
+
+
+def inference_target(target):
+    parsed = urlsplit(target)
+    return (
+        not parsed.scheme
+        and not parsed.netloc
+        and not parsed.fragment
+        and parsed.path == "/v1/messages"
+        and parsed.query in {"", "beta=true"}
+        and target in {"/v1/messages", "/v1/messages?beta=true"}
+    )
 
 
 def receive(stream, count):
@@ -36,7 +49,7 @@ def main():
             supplied = self.headers.get("x-api-key", "")
             length = self.headers.get("content-length", "")
             if (
-                self.path != "/v1/messages"
+                not inference_target(self.path)
                 or not hmac.compare_digest(supplied, capability)
                 or (
                     not length.isascii()
@@ -80,6 +93,10 @@ def main():
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "DISABLE_AUTOUPDATER": "1",
         "DISABLE_TELEMETRY": "1",
+        # Remove paired pre-release request fields (including context_management)
+        # using the pinned CLI's supported switch. Adaptive thinking remains enabled.
+        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+        "CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS": "1",
     }
     child = subprocess.Popen(
         descriptor["argv"],

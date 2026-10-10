@@ -311,35 +311,39 @@ class ClaudeReviewRunner:
                     check_authority=authorize_request,
                 )
                 with UnixRelay(relay_root, broker, capability):
-                    self.verifier.verify(manifest, intent.approval, tokens, now=time.time())
-                    if cancel.is_set():
-                        raise SafetyError("paid_cancelled_before_launch")
-                    gate_read, gate_write = os.pipe()
-                    child = subprocess.Popen(
-                        [
-                            sys.executable,
-                            "-I",
-                            "-S",
-                            str(Path(cgroup_enter.__file__)),
-                            str(gate_read),
-                            *argv,
-                        ],
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        env={"LANG": "C.UTF-8"},
-                        pass_fds=(gate_read,),
-                        start_new_session=True,
-                    )
-                    group.attach(child.pid)
-                    os.close(gate_read)
-                    gate_read = None
-                    # Authorization will be checked again by ledger.admit immediately
-                    # before the broker's first upstream request.
-                    self.verifier.verify(manifest, intent.approval, tokens, now=time.time())
-                    os.write(gate_write, b"1")
-                    os.close(gate_write)
-                    gate_write = None
+                    # Preparation can outlast or revoke authority. Hold current DB locks
+                    # through the gate admission; release before descriptor/HTTP/polling.
+                    with self.ledger.launch_authority(intent) as recheck:
+                        self.verifier.verify(manifest, intent.approval, tokens, now=time.time())
+                        if cancel.is_set():
+                            raise SafetyError("paid_cancelled_before_launch")
+                        gate_read, gate_write = os.pipe()
+                        child = subprocess.Popen(
+                            [
+                                sys.executable,
+                                "-I",
+                                "-S",
+                                str(Path(cgroup_enter.__file__)),
+                                str(gate_read),
+                                *argv,
+                            ],
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            env={"LANG": "C.UTF-8"},
+                            pass_fds=(gate_read,),
+                            start_new_session=True,
+                        )
+                        group.attach(child.pid)
+                        os.close(gate_read)
+                        gate_read = None
+                        self.verifier.verify(manifest, intent.approval, tokens, now=time.time())
+                        recheck()
+                        if cancel.is_set():
+                            raise SafetyError("paid_cancelled_before_gate")
+                        os.write(gate_write, b"1")
+                        os.close(gate_write)
+                        gate_write = None
                     descriptor = canonical(
                         {
                             "argv": claude_argv(profile),
@@ -416,6 +420,9 @@ class ClaudeReviewRunner:
                 # Even an attachment failure must terminate the trusted waiting launcher.
                 child.kill()
                 child.wait(timeout=3)
+            if child is not None:
+                child.stdin.close()
+                child.stdout.close()
             if child is None:
                 cleanup = True  # No gated process or provider relay capability was launched.
             if cleanup and not completed_local:

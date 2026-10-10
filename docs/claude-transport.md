@@ -1,5 +1,7 @@
 # Claude review transport
 
+[한국어 검토 보완 기록](claude-review-fixes.ko.md)
+
 The separate `intelligenceai.web.claude_worker` executes one tool-free, read-only
 review of an existing immutable candidate. It implements a production transport;
 tests use an explicitly fake provider and CLI. Deployment and real paid model
@@ -31,6 +33,13 @@ and evidence bytes, policy, budget expiry and the durable consumption fence.
 Reservation and launch intent are committed before side effects. PostgreSQL
 locks the project to serialize budgets across competing tasks. Each task
 generation reserves once, launches once and admits one upstream request.
+After image hashing and cgroup preparation, a short transaction locks current
+project, review, task, job and session authority through process creation and
+the exec gate. It rechecks expiry and cancellation after attachment. Gate
+permission is the local launch admission point; physical CLI creation happens
+later. Supported membership/cancellation APIs use the same project lock, and
+logout must wait on the session lock. Provisioning SQL must follow those locks.
+No database lock is held through provider HTTP, process polling or relay drain.
 
 ## Transport and isolation
 
@@ -51,6 +60,13 @@ subscription tokens, Bedrock and other credential modes are not implemented.
 The worker accepts an already supplied operator credential file descriptor;
 it does not discover or create credentials. No actual secret was supplied in
 these tests. Python strings do not provide a secure memory-erasure guarantee.
+The bridge accepts exactly `/v1/messages` or the native
+`/v1/messages?beta=true`; other paths, queries and absolute targets are denied.
+The pinned CLI environment sets `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`
+and `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` to remove paired pre-release
+fields, including context management. It does not assume that thinking can be
+disabled on every model. Context-management requests remain rejected before
+HTTP. This single tool-free request does not preserve multi-turn thinking.
 
 The bridge and CLI are inside an already delegated cgroup v2 leaf. The runner
 applies and reads back memory, swap, process and CPU limits, then attaches the
@@ -70,11 +86,16 @@ evidence digest is required. There is no bundled current model/pricing guess.
 An incorrect operator model-ceiling or pricing attestation invalidates the
 financial safety bound; it must be independently verified before operation.
 
-The broker accepts text-only messages, pins model and effort, caps max tokens,
+The broker accepts text-only input messages, pins model and effort, caps max tokens,
 removes caching requests and denies tools, media, external content and unknown
-request fields. It bounds request/response bytes and deadlines. A complete
-text-only SSE stream, terminal `end_turn`, `message_stop` and recognized usage
-are required to settle. Unexpected billing fields, fallback model, thinking,
+request fields. Adaptive/disabled thinking and bounded manual thinking are
+validated. Thinking uses the same output token ceiling and price ceiling.
+It bounds request/response bytes and deadlines. A complete text/thinking SSE
+stream, terminal `end_turn`, `message_stop` and recognized cumulative usage
+are required to settle. Multiple `message_delta` events update the cumulative
+count rather than adding charges. Thinking signatures and redacted blocks
+are relayed without storing reasoning in the private review or audit.
+Unexpected billing fields, fallback model, malformed thinking,
 tools, stream errors, missing usage, redirect, timeout or transport ambiguity
 retain the entire hold and mark `NEEDS_RECONCILIATION`. They never auto-replay.
 The booked charge is a conservative upper bound from observed token usage,
@@ -87,6 +108,11 @@ private review artifact. The broker drains an in-flight response even when the
 local CLI disconnects. A crash before a confirmed response holds funds;
 operator reconciliation requires external billing evidence. This release has
 no automatic release/refund or retry of ambiguous invocations.
+An unclaimed reservation cancelled without a lease, or a `LAUNCHING` invocation
+with verified local cleanup and no committed HTTP admission, releases its hold
+atomically once and records `TERMINATED`. A possibly sent request never refunds
+on local cleanup alone. A fresh attempt requires task recovery to a new
+generation and new approval; the consumed approval cannot reserve again.
 
 ## Deployment inputs and evidence
 
@@ -116,6 +142,8 @@ HTTPS deployment, paid authorization or cgroup enforcement on another host.
 
 Contract sources: [Claude CLI reference](https://code.claude.com/docs/en/cli-reference),
 [gateway contract](https://code.claude.com/docs/en/llm-gateway),
+[gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol),
+[thinking accounting](https://platform.claude.com/docs/en/build-with-claude/thinking),
 [Messages streaming](https://platform.claude.com/docs/en/build-with-claude/streaming),
 [bubblewrap](https://github.com/containers/bubblewrap),
 [cgroup v2](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html).

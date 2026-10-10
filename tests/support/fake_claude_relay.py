@@ -28,7 +28,7 @@ def main():
     model = sys.argv[sys.argv.index("--model") + 1]
     effort = sys.argv[sys.argv.index("--effort") + 1]
     request = urllib.request.Request(
-        os.environ["ANTHROPIC_BASE_URL"] + "/v1/messages",
+        os.environ["ANTHROPIC_BASE_URL"] + "/v1/messages?beta=true",
         data=json.dumps(
             {
                 "model": model,

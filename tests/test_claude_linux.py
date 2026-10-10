@@ -3,10 +3,12 @@
 import json
 import os
 import re
+import select
 import shutil
 import subprocess
 import sys
 import sysconfig
+import time
 from pathlib import Path
 
 import pytest
@@ -176,16 +178,44 @@ def test_actual_delegated_cgroup_atomic_descendant_cleanup(fixture):
                 str(read_fd),
                 sys.executable,
                 "-c",
-                "import os,time; os.fork(); time.sleep(60)",
+                "import os,time; child=os.fork(); "
+                "role='child' if child==0 else 'parent'; "
+                "os.write(1,(role+':'+str(os.getpid())+'\\n').encode()); time.sleep(60)",
             ],
             pass_fds=(read_fd,),
             env={},
             stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
         )
         group.attach(child.pid)
         os.write(write_fd, b"1")
+        ready = {}
+        buffer = bytearray()
+        deadline = time.monotonic() + 5
+        while len(ready) < 2:
+            remaining = deadline - time.monotonic()
+            assert remaining > 0, "parent and forked child did not execute"
+            assert select.select([child.stdout], [], [], remaining)[0]
+            chunk = os.read(child.stdout.fileno(), 128)
+            assert chunk, "child process exited before heartbeat"
+            buffer.extend(chunk)
+            assert len(buffer) <= 128
+            while b"\n" in buffer:
+                line, _, rest = buffer.partition(b"\n")
+                buffer = bytearray(rest)
+                role, _, process_id = line.decode("ascii").partition(":")
+                assert role in {"parent", "child"} and role not in ready
+                ready[role] = int(process_id)
+        assert ready["parent"] == child.pid and ready["child"] != child.pid
+        members = set(map(int, (group.path / "cgroup.procs").read_text().split()))
+        assert set(ready.values()) <= members
         assert group.kill_and_verify()
-        child.wait(timeout=3)
+        assert child.wait(timeout=3) != 0
+        for process_id in ready.values():
+            status = Path(f"/proc/{process_id}/stat")
+            if status.exists():
+                assert status.read_text().rsplit(") ", 1)[1].split()[0] == "Z"
+        assert child.stdout.read() == b""
     finally:
         os.close(read_fd)
         os.close(write_fd)
@@ -194,6 +224,8 @@ def test_actual_delegated_cgroup_atomic_descendant_cleanup(fixture):
         if child is not None and child.poll() is None:
             child.kill()
             child.wait(timeout=3)
+        if child is not None and child.stdout is not None:
+            child.stdout.close()
 
 
 def test_resource_scope_is_blocked_without_delegation(fixture, tmp_path):

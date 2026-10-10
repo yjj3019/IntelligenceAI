@@ -365,6 +365,10 @@ class Service:
                     and paid["state"] in {"SETTLED", "IMPORTED", "TERMINATED"}
                     and job["lease_token"] is None
                 )
+                if paid["state"] == "RESERVED" and confirmed:
+                    from intelligenceai.web.paid_store import PaidLedger
+
+                    PaidLedger(self.db).release_unsent(conn, paid)
                 conn.execute(
                     update(paid_reviews).where(paid_reviews.c.id == paid["id"]).values(revoked=True)
                 )

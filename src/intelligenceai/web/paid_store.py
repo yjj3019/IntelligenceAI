@@ -1,6 +1,7 @@
 """Durable at-most-once provider HTTP admission and conservative budget settlement."""
 
 import hashlib
+from contextlib import contextmanager
 
 from sqlalchemy import (
     insert,
@@ -270,6 +271,78 @@ class PaidLedger:
                 .values(state="NEEDS_RECONCILIATION")
             )
 
+    @contextmanager
+    def launch_authority(self, intent):
+        """Serialize supported revocations with the gated local launch admission."""
+        with self.db.begin() as conn:
+            conn.execute(
+                select(projects)
+                .where(projects.c.id == intent.approval.project_id)
+                .with_for_update()
+            ).one()
+            row = (
+                conn.execute(
+                    select(paid_reviews)
+                    .where(paid_reviews.c.id == intent.invocation_id)
+                    .with_for_update()
+                )
+                .mappings()
+                .one()
+            )
+
+            def recheck():
+                _, _, job = self.locked(conn, intent, row["session_hash"], row["approved_by"])
+                if (
+                    row["revoked"]
+                    or row["state"] != "LAUNCHING"
+                    or row["intent_digest"] != intent.binding
+                    or digest(row["intent"]) != intent.binding
+                    or job["state"] != "RUNNING"
+                    or job["lease_token"] != intent.invocation_id
+                    or job["lease_expires_at"] is None
+                    or job["lease_expires_at"] <= now()
+                ):
+                    raise SafetyError("paid_launch_authority_changed")
+
+            recheck()
+            yield recheck
+
+    def release_unsent(self, conn, row):
+        """Caller holds project/review locks and proves no local relay can send."""
+        if row["state"] not in {"RESERVED", "LAUNCHING"} or row["request_digest"] is not None:
+            raise SafetyError("paid_no_send_proof_required")
+        budget = (
+            conn.execute(
+                select(paid_budgets)
+                .where(paid_budgets.c.project_id == row["project_id"])
+                .with_for_update()
+            )
+            .mappings()
+            .one()
+        )
+        if budget["held_microusd"] < row["hold_microusd"]:
+            raise SafetyError("paid_hold_accounting_conflict")
+        conn.execute(
+            update(paid_budgets)
+            .where(paid_budgets.c.project_id == row["project_id"])
+            .values(held_microusd=budget["held_microusd"] - row["hold_microusd"])
+        )
+        conn.execute(
+            update(paid_reviews)
+            .where(paid_reviews.c.id == row["id"])
+            .values(
+                state="TERMINATED",
+                termination_confirmed=True,
+                result={"kind": "never_started", "released_microusd": row["hold_microusd"]},
+            )
+        )
+        self.event(
+            conn,
+            PaidReviewIntent.model_validate(row["intent"]),
+            "paid_unsent_hold_released",
+            {"released_microusd": row["hold_microusd"]},
+        )
+
     def settle(self, intent, profile, usage, result):
         if intent.profile_digest != profile.binding:
             raise SafetyError("paid_settlement_profile_changed")
@@ -458,6 +531,7 @@ class PaidLedger:
             )
             if (
                 row["intent_digest"] != intent.binding
+                or digest(row["intent"]) != intent.binding
                 or task["generation"] != (intent.approval.generation)
                 or job["lease_token"] != intent.invocation_id
             ):
@@ -465,6 +539,8 @@ class PaidLedger:
             terminal = row["state"] in {"LAUNCHING", "SETTLED", "IMPORTED"}
             if terminal:
                 state = "TERMINATED" if row["state"] == "LAUNCHING" else row["state"]
+                if row["state"] == "LAUNCHING":
+                    self.release_unsent(conn, row)
                 conn.execute(
                     update(paid_reviews)
                     .where(paid_reviews.c.id == row["id"])

@@ -2,13 +2,17 @@
 
 import base64
 import hashlib
+import io
 import json
 import os
 import socket
 import struct
+import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from pathlib import Path
 from threading import Barrier
+from types import SimpleNamespace
 
 import pytest
 
@@ -27,7 +31,8 @@ from intelligenceai.isolation_contracts import (
     PinnedRoot,
 )
 from intelligenceai.security import SafetyError, canonical, digest
-from intelligenceai.web.claude_bridge import receive
+from intelligenceai.web import claude_runner, paid_store
+from intelligenceai.web.claude_bridge import inference_target, receive
 from intelligenceai.web.claude_broker import ClaudeBroker, bounded_request, stream_result
 from intelligenceai.web.claude_contracts import ClaudeProfile, PaidReviewIntent, claude_argv
 from intelligenceai.web.claude_runner import ClaudeReviewRunner, DelegatedCgroup, UnixRelay
@@ -413,6 +418,197 @@ def test_prompt_change_duplicate_json_and_stream_terminal_are_rejected(fixture):
         stream_result(stream(profile) + stream(profile), profile)
 
 
+@pytest.mark.parametrize(
+    "target,accepted",
+    [
+        ("/v1/messages", True),
+        ("/v1/messages?beta=true", True),
+        ("/v1/messages?beta=false", False),
+        ("/v1/messages?beta=true&beta=true", False),
+        ("/v1/messages?beta=true&url=https://other", False),
+        ("https://api.anthropic.com/v1/messages", False),
+        ("//other/v1/messages", False),
+        ("/v1/messages#fragment", False),
+        ("/v1/messages?%62eta=true", False),
+        ("/v1/messages?", False),
+    ],
+)
+def test_fixed_inference_target_and_only_native_beta_query(target, accepted):
+    assert inference_target(target) is accepted
+
+
+def thinking_stream(profile, *, malformed=None):
+    frames = stream(profile).decode().split("\n\n")
+    extra = [
+        (
+            "content_block_start",
+            {"index": 1, "content_block": {"type": "thinking", "thinking": "", "signature": ""}},
+        ),
+        (
+            "content_block_delta",
+            {
+                "index": 1,
+                "delta": {"type": "thinking_delta", "thinking": "fixture-private-reasoning"},
+            },
+        ),
+        (
+            "content_block_delta",
+            {
+                "index": 1,
+                "delta": {"type": "signature_delta", "signature": "fixture-opaque-signature"},
+            },
+        ),
+        ("content_block_stop", {"index": 1}),
+        (
+            "content_block_start",
+            {
+                "index": 2,
+                "content_block": {"type": "redacted_thinking", "data": "fixture-opaque-redaction"},
+            },
+        ),
+        ("content_block_stop", {"index": 2}),
+    ]
+    if malformed == "missing_signature":
+        extra.pop(2)
+    wire = (
+        [frames[0]]
+        + [f"event: {name}\ndata: {canonical({'type': name, **value})}" for name, value in extra]
+        + frames[1:4]
+    )
+    for value in (3, 5):
+        delta = {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": value},
+        }
+        if malformed == "decreasing_usage" and value == 5:
+            delta["usage"]["output_tokens"] = 2
+        wire.append("event: message_delta\ndata: " + canonical(delta))
+    wire.append(frames[5])
+    return ("\n\n".join(wire) + "\n\n").encode()
+
+
+def test_adaptive_thinking_and_cumulative_usage_settle_without_storing_reasoning(fixture):
+    ledger, intent, profile, prompt = reservation(fixture)
+    ledger.claim_launch(intent)
+    calls = []
+
+    def upstream(req):
+        calls.append(req)
+        assert json.loads(req.content)["thinking"] == {"type": "adaptive"}
+        return httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, content=thinking_stream(profile)
+        )
+
+    broker = ClaudeBroker(
+        ledger, intent, profile, lambda: "fixture", prompt, transport=httpx.MockTransport(upstream)
+    )
+    raw = json.loads(request(profile, prompt))
+    raw["thinking"] = {"type": "adaptive"}
+    broker.exchange(canonical(raw).encode())
+    assert len(calls) == 1 and broker.result == "FAKE_PROVIDER_TEST_ONLY"
+    row, budget = stored(fixture, intent)
+    assert row["result"]["usage"]["output_tokens"] == 5
+    assert budget["held_microusd"] == 0 and budget["spent_microusd"] == 60
+    ledger.runtime_ended(intent, cleanup_verified=True)
+    ledger.import_review(intent, broker.result, cleanup_verified=True)
+    with fixture["db"].connect() as conn:
+        contents = conn.execute(
+            select(artifacts.c.content).where(artifacts.c.kind == "review")
+        ).scalar_one()
+    assert "reasoning" not in contents and "signature" not in contents
+
+
+@pytest.mark.parametrize("malformed", ["missing_signature", "decreasing_usage"])
+def test_invalid_thinking_or_cumulative_usage_keeps_uncertain_hold(fixture, malformed):
+    ledger, intent, profile, prompt = reservation(fixture)
+    ledger.claim_launch(intent)
+    broker = ClaudeBroker(
+        ledger,
+        intent,
+        profile,
+        lambda: "fixture",
+        prompt,
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=thinking_stream(profile, malformed=malformed),
+            )
+        ),
+    )
+    with pytest.raises(SafetyError):
+        broker.exchange(request(profile, prompt))
+    row, budget = stored(fixture, intent)
+    assert row["state"] == "NEEDS_RECONCILIATION"
+    assert budget["held_microusd"] == 240 and budget["spent_microusd"] == 0
+
+
+@pytest.mark.parametrize("point", ["reserved_cancel", "pre_http_cleanup"])
+def test_proven_no_send_refunds_once_and_new_generation_requires_fresh_approval(fixture, point):
+    f = fixture
+    ledger, intent, profile, _ = reservation(f)
+    initial, _ = stored(f, intent)
+    if point == "reserved_cancel":
+        assert (
+            f["service"].cancel(f["alice"], f["project"], intent.approval.task_id, uid())["state"]
+            == "CANCELLED"
+        )
+        f["service"].cancel(f["alice"], f["project"], intent.approval.task_id, uid())
+    else:
+        ledger.claim_launch(intent)
+        with pytest.raises(SafetyError):
+            ledger.runtime_ended(intent, cleanup_verified=False)
+        assert stored(f, intent)[1]["held_microusd"] == 240
+        ledger.runtime_ended(intent, cleanup_verified=True)
+        with pytest.raises(SafetyError):
+            ledger.runtime_ended(intent, cleanup_verified=True)
+    row, budget = stored(f, intent)
+    assert row["state"] == "TERMINATED" and row["termination_confirmed"]
+    assert budget["held_microusd"] == budget["spent_microusd"] == 0
+    with pytest.raises(SafetyError):
+        ledger.reserve(
+            intent,
+            profile,
+            session_hash=initial["session_hash"],
+            approved_by=intent.approved_by,
+            receipt_digest="0" * 64,
+        )
+    f["service"].recover(f["alice"], f["project"], intent.approval.task_id, uid())
+    # New fixture evidence for the recovered generation, never production attestation.
+    with f["db"].begin() as conn:
+        conn.execute(
+            update(tasks)
+            .where(tasks.c.id == intent.approval.task_id)
+            .values(
+                state="READY_FOR_APPROVAL",
+                evidence_verified=True,
+                candidate_digest=intent.approval.candidate_digest,
+                evidence_digest=intent.approval.evidence_digest,
+            )
+        )
+    fresh = intent.model_copy(
+        update={
+            "invocation_id": uid(),
+            "approval": intent.approval.model_copy(
+                update={
+                    "generation": 2,
+                    "manifest_digest": "1" * 64,
+                    "expires_at": float(now() + 180),
+                }
+            ),
+        }
+    )
+    ledger.reserve(
+        fresh,
+        profile,
+        session_hash=initial["session_hash"],
+        approved_by=intent.approved_by,
+        receipt_digest="1" * 64,
+    )
+    assert stored(f, fresh)[1]["held_microusd"] == 240
+
+
 def test_insufficient_budget_and_duplicate_reservation_do_not_hold_twice(fixture):
     ledger, intent, profile, _ = reservation(fixture)
     row, _ = stored(fixture, intent)
@@ -516,6 +712,43 @@ def test_postgresql_competing_launches_consume_once(fixture):
             pool.dispose()
 
 
+@pytest.mark.parametrize("mutation", ["project", "session"])
+def test_postgresql_gate_authority_retains_revocation_locks(fixture, mutation):
+    if fixture["db"].dialect.name != "postgresql":
+        pytest.skip("real ephemeral PostgreSQL required; SQLite cannot prove row locks")
+    from sqlalchemy.exc import DBAPIError
+
+    ledger, intent, _, _ = reservation(fixture)
+    ledger.claim_launch(intent)
+    pool = create_engine(fixture["db"].url, connect_args={"options": "-c lock_timeout=150ms"})
+
+    def revoke():
+        with pool.begin() as conn:
+            if mutation == "project":
+                conn.execute(
+                    update(projects)
+                    .where(projects.c.id == intent.approval.project_id)
+                    .values(policy_digest="0" * 64)
+                )
+            else:
+                conn.execute(update(sessions).values(revoked=True))
+
+    try:
+        with ledger.launch_authority(intent) as recheck:
+            with ThreadPoolExecutor(1) as workers:
+                future = workers.submit(revoke)
+                with pytest.raises(DBAPIError) as error:
+                    future.result(timeout=5)
+                assert error.value.orig.sqlstate == "55P03"
+            recheck()
+        revoke()
+        with pytest.raises(Exception):
+            with ledger.launch_authority(intent):
+                pytest.fail("committed revocation admitted a subsequent launch")
+    finally:
+        pool.dispose()
+
+
 def test_fake_directory_cannot_assert_actual_cgroup_enforcement(tmp_path, fixture):
     profile = profile_for(fixture)
     (tmp_path / "cgroup.subtree_control").write_text("cpu memory pids")
@@ -576,6 +809,213 @@ def test_paid_invocation_and_exact_session_are_bound_before_any_launch(fixture, 
             cancel=__import__("threading").Event(),
         )
     assert stored(fixture, intent)[0]["state"] == "RESERVED"
+
+
+def prepared_runner(f, tmp_path, monkeypatch):
+    """Deterministic authority-boundary harness; no OS/provider enforcement claim."""
+    ledger, intent, profile, prompt = reservation(f)
+    row, _ = stored(f, intent)
+    manifest = LaunchManifest(
+        invocation_id=intent.invocation_id,
+        task_id=intent.approval.task_id,
+        project_id=intent.approval.project_id,
+        actor_id=intent.approval.actor_id,
+        generation=1,
+        provider="claude",
+        model=profile.model,
+        effort=profile.effort,
+        mode="read_only",
+        host_os="Linux",
+        backend="linux-bwrap-claude-relay-v1",
+        backend_binary_digest=profile.backend_digest,
+        vendor_binary_digest=profile.cli_digest,
+        runner_digest="a" * 64,
+        policy_digest=profile.policy_digest,
+        image=profile.image,
+        workspace=profile.image,
+        network=NetworkPolicy(provider_hosts=("api.anthropic.com",)),
+        caller_context_digest=digest(
+            {
+                "actor_id": intent.approval.actor_id,
+                "project_id": intent.approval.project_id,
+                "session_hash": row["session_hash"],
+            }
+        ),
+        overlay_digest=digest(
+            {
+                "profile": profile.binding,
+                "prompt": intent.prompt_digest,
+                "budget": intent.budget_microusd,
+                "approved_by": intent.approved_by,
+            }
+        ),
+        deadline=float(now() + 60),
+        budget=InvocationBudget(max_invocations=1, max_cost_microusd=240),
+    )
+    intent = intent.model_copy(
+        update={
+            "approval": intent.approval.model_copy(update={"manifest_digest": manifest.binding})
+        }
+    )
+    with f["db"].begin() as conn:
+        conn.execute(
+            update(paid_reviews)
+            .where(paid_reviews.c.id == intent.invocation_id)
+            .values(intent=intent.model_dump(mode="json"), intent_digest=intent.binding)
+        )
+    # Reservation already exists; no synthetic signature is treated as a real receipt.
+    monkeypatch.setattr(ledger, "reserve", lambda *a, **k: None)
+    runner = ClaudeReviewRunner.__new__(ClaudeReviewRunner)
+    runner.ledger = ledger
+    runner.verifier = SimpleNamespace(
+        verify=lambda *a, **k: SimpleNamespace(receipt_set_digest="0" * 64)
+    )
+
+    class PrivateRoot:
+        def __fspath__(self):
+            return str(tmp_path)
+
+        def mkdir(self, **kwargs):
+            pass
+
+        def is_symlink(self):
+            return False
+
+        def stat(self):
+            return SimpleNamespace(st_mode=0o700)
+
+    runner.runtime_root = PrivateRoot()
+    runner.delegated_root = tmp_path
+    runner.command = lambda *a: ("fixture-only",)
+    runner.credential = lambda: pytest.fail("no credential read at local launch")
+    monkeypatch.setattr(claude_runner, "UnixRelay", lambda *a: nullcontext())
+    monkeypatch.setattr(
+        claude_runner,
+        "DelegatedCgroup",
+        lambda *a: SimpleNamespace(attach=lambda pid: None, kill_and_verify=lambda: True),
+    )
+    return runner, ledger, intent, profile, prompt, manifest, row["session_hash"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "cancel",
+        "session",
+        "requester",
+        "approver",
+        "record",
+        "intent",
+        "lease",
+        "candidate",
+        "policy",
+    ],
+)
+def test_preparation_revocation_denies_popen_and_refunds_proven_unsent(
+    fixture, tmp_path, monkeypatch, mutation
+):
+    f = fixture
+    runner, ledger, intent, profile, prompt, manifest, session_hash = prepared_runner(
+        f, tmp_path, monkeypatch
+    )
+
+    def prepare(*_):
+        with f["db"].begin() as conn:
+            if mutation == "cancel":
+                conn.execute(update(jobs).values(cancel_requested=True))
+            elif mutation == "session":
+                conn.execute(update(sessions).values(revoked=True))
+            elif mutation in {"requester", "approver"}:
+                who = f["alice"] if mutation == "requester" else f["viewer"]
+                conn.execute(update(members).where(members.c.user_id == who).values(role="viewer"))
+            elif mutation == "record":
+                conn.execute(update(paid_reviews).values(revoked=True))
+            elif mutation == "intent":
+                conn.execute(update(paid_reviews).values(intent={"tampered": True}))
+            elif mutation == "lease":
+                conn.execute(update(jobs).values(lease_token="different-invocation"))
+            elif mutation == "candidate":
+                conn.execute(update(tasks).values(candidate_digest="0" * 64))
+            else:
+                conn.execute(update(projects).values(policy_digest="0" * 64))
+        return ("fixture-only",)
+
+    runner.command = prepare
+    monkeypatch.setattr(
+        claude_runner.subprocess,
+        "Popen",
+        lambda *a, **k: pytest.fail("revoked authority launched after preparation"),
+    )
+    with pytest.raises(Exception):
+        runner.run(
+            manifest,
+            profile,
+            intent,
+            (),
+            prompt,
+            session_hash=session_hash,
+            approved_by=intent.approved_by,
+            cancel=threading.Event(),
+        )
+    row, budget = stored(f, intent)
+    if mutation in {"intent", "lease"}:
+        # A corrupted durable fence cannot justify rewriting accounting.
+        assert budget["held_microusd"] == 240
+    else:
+        assert row["state"] == "TERMINATED" and budget["held_microusd"] == 0
+
+
+@pytest.mark.parametrize("change", ["approval_expiry", "session_expiry", "cancel_event"])
+def test_gated_attachment_rechecks_deadlines_and_cancel_before_exec_permission(
+    fixture, tmp_path, monkeypatch, change
+):
+    runner, ledger, intent, profile, prompt, manifest, session_hash = prepared_runner(
+        fixture, tmp_path, monkeypatch
+    )
+    clock = [now()]
+    monkeypatch.setattr(paid_store, "now", lambda: clock[0])
+    if change == "session_expiry":
+        with fixture["db"].begin() as conn:
+            conn.execute(update(sessions).values(expires_at=clock[0] + 1))
+    cancel = threading.Event()
+    child = SimpleNamespace(pid=123, stdin=io.BytesIO(), stdout=io.BytesIO(), returncode=None)
+    child.poll = lambda: child.returncode
+    child.kill = lambda: setattr(child, "returncode", -9)
+    child.wait = lambda **k: child.returncode
+    monkeypatch.setattr(claude_runner.subprocess, "Popen", lambda *a, **k: child)
+
+    def attach(_):
+        if change == "approval_expiry":
+            clock[0] = int(intent.approval.expires_at)
+        elif change == "session_expiry":
+            clock[0] += 2
+        else:
+            cancel.set()
+
+    monkeypatch.setattr(
+        claude_runner,
+        "DelegatedCgroup",
+        lambda *a: SimpleNamespace(attach=attach, kill_and_verify=lambda: True),
+    )
+    monkeypatch.setattr(
+        claude_runner.os,
+        "write",
+        lambda *a: pytest.fail("expired/cancelled authority released exec gate"),
+    )
+    with pytest.raises(SafetyError):
+        runner.run(
+            manifest,
+            profile,
+            intent,
+            (),
+            prompt,
+            session_hash=session_hash,
+            approved_by=intent.approved_by,
+            cancel=cancel,
+        )
+    assert child.returncode == -9 and child.stdin.closed and child.stdout.closed
+    row, budget = stored(fixture, intent)
+    assert row["state"] == "TERMINATED" and budget["held_microusd"] == 0
 
 
 @pytest.mark.skipif(os.name == "nt", reason="actual Unix relay is Linux/macOS only")
