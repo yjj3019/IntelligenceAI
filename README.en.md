@@ -8,6 +8,8 @@ This is a foundation, not a finished general AI assistant. It does not authentic
 
 ## Install and run
 
+A restricted [local stdio MCP service](docs/mcp.md) uses the same controller and official pinned Python SDK 1.26.0. It exposes capabilities/preview/submit/status/results/cancel only. Operator repository grants and durable admission keys restrict requests; approval and external actions are absent from model tools. No HTTP port or application registration is needed.
+
 The controller now executes typed DAGs with durable per-step receipts, explicit result references, serialized fixture writers and parallel static reviewers over one frozen candidate. File existence, JSON shape and Python AST profiles inspect real bytes without executing project code. See [DAG guide](docs/dag.md) and the owned Python/JSON sample plans under `examples`. Test/build commands remain disabled.
 
 Version-scoped argv/stdin preparation, separate provider result parsers and offline lifecycle regressions are implemented in `protocols.py`. See [protocol contracts](docs/protocols.md). Production dispatch is unconditionally disabled; public inputs cannot select fake transports or enable the live gate.

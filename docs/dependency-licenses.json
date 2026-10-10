@@ -18,10 +18,22 @@
     "source": "https://pypi.org/project/anyio/4.15.1/"
   },
   {
+    "name": "attrs",
+    "version": "26.1.0",
+    "license": "MIT",
+    "source": "https://pypi.org/project/attrs/26.1.0/"
+  },
+  {
     "name": "certifi",
     "version": "2026.7.22",
     "license": "MPL-2.0",
     "source": "https://pypi.org/project/certifi/2026.7.22/"
+  },
+  {
+    "name": "cffi",
+    "version": "2.1.1",
+    "license": "MIT-0",
+    "source": "https://pypi.org/project/cffi/2.1.1/"
   },
   {
     "name": "charset-normalizer",
@@ -30,10 +42,22 @@
     "source": "https://pypi.org/project/charset-normalizer/3.5.2/"
   },
   {
+    "name": "click",
+    "version": "8.5.0",
+    "license": "BSD-3-Clause",
+    "source": "https://pypi.org/project/click/8.5.0/"
+  },
+  {
     "name": "colorama",
     "version": "0.4.6",
     "license": "License :: OSI Approved :: BSD License",
     "source": "https://pypi.org/project/colorama/0.4.6/"
+  },
+  {
+    "name": "cryptography",
+    "version": "50.0.2",
+    "license": "Apache-2.0 OR BSD-3-Clause",
+    "source": "https://pypi.org/project/cryptography/50.0.2/"
   },
   {
     "name": "distro",
@@ -72,6 +96,12 @@
     "source": "https://pypi.org/project/httpx/0.28.1/"
   },
   {
+    "name": "httpx-sse",
+    "version": "0.4.3",
+    "license": "MIT",
+    "source": "https://pypi.org/project/httpx-sse/0.4.3/"
+  },
+  {
     "name": "httpx2",
     "version": "2.13.1",
     "license": "BSD-3-Clause",
@@ -100,6 +130,18 @@
     "version": "3.2.0",
     "license": "Modified BSD License",
     "source": "https://pypi.org/project/jsonpointer/3.2.0/"
+  },
+  {
+    "name": "jsonschema",
+    "version": "4.26.0",
+    "license": "MIT",
+    "source": "https://pypi.org/project/jsonschema/4.26.0/"
+  },
+  {
+    "name": "jsonschema-specifications",
+    "version": "2025.9.1",
+    "license": "MIT",
+    "source": "https://pypi.org/project/jsonschema-specifications/2025.9.1/"
   },
   {
     "name": "langchain-core",
@@ -150,6 +192,12 @@
     "source": "https://pypi.org/project/langsmith/0.14.7/"
   },
   {
+    "name": "mcp",
+    "version": "1.26.0",
+    "license": "MIT",
+    "source": "https://pypi.org/project/mcp/1.26.0/"
+  },
+  {
     "name": "orjson",
     "version": "3.13.0",
     "license": "MPL-2.0 AND (Apache-2.0 OR MIT)",
@@ -180,10 +228,22 @@
     "source": "https://pypi.org/project/pluggy/1.6.0/"
   },
   {
+    "name": "pycparser",
+    "version": "3.11",
+    "license": "BSD-3-Clause",
+    "source": "https://pypi.org/project/pycparser/3.11/"
+  },
+  {
     "name": "pydantic",
     "version": "2.12.3",
     "license": "MIT",
     "source": "https://pypi.org/project/pydantic/2.12.3/"
+  },
+  {
+    "name": "pydantic-settings",
+    "version": "2.15.0",
+    "license": "MIT",
+    "source": "https://pypi.org/project/pydantic-settings/2.15.0/"
   },
   {
     "name": "pydantic_core",
@@ -198,16 +258,46 @@
     "source": "https://pypi.org/project/Pygments/2.21.0/"
   },
   {
+    "name": "PyJWT",
+    "version": "2.15.1",
+    "license": "MIT",
+    "source": "https://pypi.org/project/PyJWT/2.15.1/"
+  },
+  {
     "name": "pytest",
     "version": "8.4.2",
     "license": "MIT",
     "source": "https://pypi.org/project/pytest/8.4.2/"
   },
   {
+    "name": "python-dotenv",
+    "version": "1.2.4",
+    "license": "BSD-3-Clause",
+    "source": "https://pypi.org/project/python-dotenv/1.2.4/"
+  },
+  {
+    "name": "python-multipart",
+    "version": "0.0.32",
+    "license": "Apache-2.0",
+    "source": "https://pypi.org/project/python-multipart/0.0.32/"
+  },
+  {
+    "name": "pywin32",
+    "version": "312",
+    "license": "PSF",
+    "source": "https://pypi.org/project/pywin32/312/"
+  },
+  {
     "name": "PyYAML",
     "version": "6.0.3",
     "license": "MIT",
     "source": "https://pypi.org/project/PyYAML/6.0.3/"
+  },
+  {
+    "name": "referencing",
+    "version": "0.37.0",
+    "license": "MIT",
+    "source": "https://pypi.org/project/referencing/0.37.0/"
   },
   {
     "name": "requests",
@@ -220,6 +310,12 @@
     "version": "1.0.0",
     "license": "Apache 2.0",
     "source": "https://pypi.org/project/requests-toolbelt/1.0.0/"
+  },
+  {
+    "name": "rpds-py",
+    "version": "2026.9.1",
+    "license": "MIT",
+    "source": "https://pypi.org/project/rpds-py/2026.9.1/"
   },
   {
     "name": "ruff",
@@ -238,6 +334,18 @@
     "version": "0.1.9",
     "license": "MIT License, Apache License, Version 2.0",
     "source": "https://pypi.org/project/sqlite-vec/0.1.9/"
+  },
+  {
+    "name": "sse-starlette",
+    "version": "3.5.0",
+    "license": "BSD-3-Clause",
+    "source": "https://pypi.org/project/sse-starlette/3.5.0/"
+  },
+  {
+    "name": "starlette",
+    "version": "1.7.0",
+    "license": "BSD-3-Clause",
+    "source": "https://pypi.org/project/starlette/1.7.0/"
   },
   {
     "name": "tenacity",
@@ -280,6 +388,12 @@
     "version": "0.17.1",
     "license": "BSD-3-Clause",
     "source": "https://pypi.org/project/uuid_utils/0.17.1/"
+  },
+  {
+    "name": "uvicorn",
+    "version": "0.54.0",
+    "license": "BSD-3-Clause",
+    "source": "https://pypi.org/project/uvicorn/0.54.0/"
   },
   {
     "name": "websockets",

@@ -36,6 +36,7 @@ def git(repo: Path, *args: str) -> bytes:
             *args,
         ],
         env=env,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         timeout=30,

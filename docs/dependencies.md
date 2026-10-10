@@ -7,6 +7,7 @@ Application code is original IntelligenceAI code under MIT. No upstream source r
 | LangGraph runtime | 1.2.14 | [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph), runtime source SHA `70dd64065bffaa3b6ab61a33f1f020fb54db8efa` | MIT | Installed |
 | SQLite checkpointer | 3.1.0 | [PyPI](https://pypi.org/project/langgraph-checkpoint-sqlite/3.1.0/) | MIT | Installed |
 | Pydantic | 2.12.3 | [PyPI](https://pypi.org/project/pydantic/2.12.3/) | MIT | Installed |
+| MCP Python SDK | 1.26.0 | [official SDK tag](https://github.com/modelcontextprotocol/python-sdk/tree/v1.26.0), [PyPI](https://pypi.org/project/mcp/1.26.0/) | MIT | Local stdio server/client only; no network transport started |
 | pytest | 8.4.2 | [PyPI](https://pypi.org/project/pytest/8.4.2/) | MIT | Development |
 | Ruff | 0.14.0 | [PyPI](https://pypi.org/project/ruff/0.14.0/) | MIT | Development |
 | Hatchling | 1.27.0 | [PyPI](https://pypi.org/project/hatchling/1.27.0/) | MIT | Locked development/build backend |

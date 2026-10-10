@@ -80,7 +80,13 @@ class Controller:
         return row["data"]
 
     def submit(
-        self, repo: Path, request: str, plan: Plan | None = None, scenario: str = "success"
+        self,
+        repo: Path,
+        request: str,
+        plan: Plan | None = None,
+        scenario: str = "success",
+        *,
+        _task_id: str | None = None,
     ) -> str:
         if scenario not in {"success", "repair", "exhaust"}:
             raise SafetyError("unknown fixture scenario")
@@ -89,7 +95,7 @@ class Controller:
         repo, base = workspace.identity(repo)
         if self.root.is_relative_to(repo):
             raise SafetyError("controller state must be outside the user's repository")
-        task_id = str(uuid.uuid4())
+        task_id = str(uuid.UUID(_task_id)) if _task_id else str(uuid.uuid4())
         task = Task(
             task_id=task_id,
             redacted_request=redact(request),

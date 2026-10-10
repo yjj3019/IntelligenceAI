@@ -8,6 +8,8 @@ IntelligenceAI는 AI 작업의 실행 상태와 변경 후보, 검사 근거, �
 
 ## 설치
 
+같은 controller를 사용하는 [로컬 stdio MCP](docs/mcp.md)를 제공합니다. 여섯 tool만 노출하며 모델에 승인·외부 공개 기능을 주지 않습니다. 포트 개방이나 앱 등록 없이 SDK client로 검증합니다.
+
 버전별 argv·stdin·결과 parser와 lifecycle 계약은 [오프라인 adapter 문서](docs/protocols.md)에 있습니다. 테스트 소유 fake transport로 검사하며 실제 dispatch는 항상 차단합니다. 공개 입력으로 fake transport나 live gate를 선택할 수 없습니다.
 
 Python 3.11 이상, Git, 이미 설치한 uv가 필요합니다. 이 저장소에서 실행합니다.

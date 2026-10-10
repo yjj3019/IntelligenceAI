@@ -248,6 +248,9 @@ class Ledger:
 
     def cancel(self, task_id: str):
         with self.transaction():
+            if self.task(task_id)["state"] in {State.CANCELLED, State.NEEDS_RECONCILIATION}:
+                self.db.execute("DELETE FROM approvals WHERE task_id=?", (task_id,))
+                return
             unknown = self.db.execute(
                 "SELECT count(*) FROM invocations WHERE task_id=? AND "
                 "status IN ('STARTING','RUNNING')",

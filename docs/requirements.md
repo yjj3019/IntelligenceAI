@@ -29,6 +29,8 @@
 
 ## 실제 P0 관찰
 
+MCP 추가 구현: 같은 Controller의 로컬 stdio service, operator repository grant, durable 중복 admission 및 여섯 tool을 구현했습니다. 실제 SDK client 왕복과 권한 주입·재접속·취소 경합은 `tests/test_mcp_stdio.py`에 있습니다. 모델 tool의 approval/publish/merge/deploy, HTTP 포트, 앱 등록 및 UI는 구현하지 않습니다.
+
 다단계 추가 구현: steps[0]와 단일 파일에 의존하던 controller 실행을 typed DAG로 교체했습니다. step receipt·result reference·직렬 writer·고정 후보의 병렬 정적 검토·실패 dependency 차단·기존 repair decision을 연결했습니다. 정적 parser와 두 소유 샘플의 3-step E2E는 `tests/test_dag.py`에서 확인합니다. 임의 프로젝트 test/build 실행은 계속 UNVERIFIED입니다.
 
 추가 구현: 버전별 PreparedInvocation, Omnilane jobs argv, MCO partial 결과, PAL codereview 다단계 메시지, Gemini/agy 별도 parser와 테스트 전용 lifecycle harness를 저장했습니다. 공개 live 실행은 불변 차단합니다. [현재 계약](protocols.md)과 `tests/test_protocols.py`를 대조합니다.
