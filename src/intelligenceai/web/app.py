@@ -261,6 +261,40 @@ def create_app(settings: Settings, *, db=None, testing=False):
     def task(request: Request, project_id: str, task_id: str):
         return service.task(actor(request)["id"], project_id, task_id)
 
+    from intelligenceai.web.paid_admission import ConsentInput, PaidAdmission, QuoteInput
+
+    paid_admission = PaidAdmission(db)
+
+    @app.get("/api/projects/{project_id}/tasks/{task_id}/paid-review")
+    def paid_status(request: Request, project_id: str, task_id: str):
+        return paid_admission.status(
+            actor(request)["id"], project_id, task_id, request.scope.get("server_session_hash")
+        )
+
+    @app.post("/api/projects/{project_id}/tasks/{task_id}/paid-review/quote")
+    def paid_quote(request: Request, project_id: str, task_id: str, data: QuoteInput):
+        user_id, key = mutation(request)
+        return paid_admission.quote(
+            user_id, project_id, task_id, key, data, request.scope.get("server_session_hash")
+        )
+
+    @app.post("/api/projects/{project_id}/tasks/{task_id}/paid-review/{action}")
+    def paid_consent(
+        request: Request, project_id: str, task_id: str, action: str, data: ConsentInput
+    ):
+        user_id, key = mutation(request)
+        if action not in {"approve", "request"}:
+            raise Problem(404, "action_not_available")
+        return paid_admission.transition(
+            user_id,
+            project_id,
+            task_id,
+            key,
+            data,
+            request.scope.get("server_session_hash"),
+            action,
+        )
+
     @app.get("/api/projects/{project_id}/tasks/{task_id}/approval-receipts/{key}")
     def approval_receipt(request: Request, project_id: str, task_id: str, key: str):
         return service.approval_receipt(actor(request)["id"], project_id, task_id, key)

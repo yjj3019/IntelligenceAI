@@ -176,6 +176,30 @@ paid_reviews = Table(
 )
 
 
+paid_profiles = Table(
+    "web_paid_profiles",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("project_id", ForeignKey(projects.c.id), nullable=False, index=True),
+    Column("name", String(80), nullable=False),
+    Column("profile", JSON, nullable=False),
+    Column("active", Boolean, nullable=False, default=False),
+)
+paid_requests = Table(
+    "web_paid_requests",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("project_id", ForeignKey(projects.c.id), nullable=False, index=True),
+    Column("task_id", ForeignKey(tasks.c.id), nullable=False, index=True),
+    Column("actor_id", ForeignKey(users.c.id), nullable=False),
+    Column("session_hash", ForeignKey(sessions.c.token_hash), nullable=False),
+    Column("profile_id", ForeignKey(paid_profiles.c.id), nullable=False),
+    Column("quote", JSON, nullable=False),
+    Column("quote_digest", String(64), nullable=False),
+    Column("state", String(32), nullable=False),
+    Column("created_at", BigInteger, nullable=False),
+)
+
 artifacts = Table(
     "web_artifacts",
     metadata,

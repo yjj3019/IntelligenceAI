@@ -18,6 +18,7 @@ from intelligenceai.web.store import (
     jobs,
     members,
     now,
+    paid_requests,
     projects,
     receipts,
     sessions,
@@ -381,6 +382,14 @@ class Service:
                 .values(cancel_requested=True, state="CANCELLED" if confirmed else job["state"])
             )
             conn.execute(update(tasks).where(tasks.c.id == task_id).values(state=state))
+            conn.execute(
+                update(paid_requests)
+                .where(
+                    paid_requests.c.task_id == task_id,
+                    paid_requests.c.state.in_(["QUOTED", "APPROVED", "REQUESTED"]),
+                )
+                .values(state="REVOKED")
+            )
             conn.execute(delete(approvals).where(approvals.c.task_id == task_id))
             self.record(
                 conn,
@@ -431,6 +440,14 @@ class Service:
             )
             conn.execute(delete(approvals).where(approvals.c.task_id == task_id))
             conn.execute(delete(artifacts).where(artifacts.c.task_id == task_id))
+            conn.execute(
+                update(paid_requests)
+                .where(
+                    paid_requests.c.task_id == task_id,
+                    paid_requests.c.state.in_(["QUOTED", "APPROVED", "REQUESTED"]),
+                )
+                .values(state="REVOKED")
+            )
             self.record(
                 conn, project_id, actor, "task.recovered", {"generation": generation}, task_id
             )

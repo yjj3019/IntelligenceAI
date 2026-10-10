@@ -1,5 +1,11 @@
 # Web boundary
 
+The [paid consent/request ledger](paid-admission.md) adds two PostgreSQL tables
+for privately provisioned model profiles and session-bound quotes. The same
+HTTP service records explicit consent and one request per generation, without
+executing repository code or provider CLIs. Operator dispatch/receipt issuance
+remain absent; actual worker admission must recheck and reserve independently.
+
 The separate [Claude review worker](claude-transport.md) adds a fixed provider
 broker and PostgreSQL paid accounting. It runs outside the HTTP process and
 requires an immutable image, existing delegated cgroup and explicit signed paid

@@ -128,7 +128,8 @@ credential values do not belong in `.env`, JSON descriptors or browser input.
 Run it as a dedicated trusted service with its own restricted UID and private
 runtime root. Do not expose this CLI as a public HTTP launcher. The HTTP API
 does not currently enqueue paid reviews or offer a paid-enable toggle; UI
-admission, operational approval issuance, budget provisioning and deployment
+admission records now have a [separate consent/request UI](paid-admission.md).
+Request dispatch, operational approval issuance, budget provisioning and deployment
 remain separate work. This implemented worker is callable once those existing
 operator inputs and explicit paid approval are supplied.
 

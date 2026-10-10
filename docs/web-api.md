@@ -1,5 +1,9 @@
 # Private API v1
 
+The private console additionally records [paid review consent and one-time
+operator-admission requests](paid-admission.md). These requests never dispatch a
+model, reserve funds or generate control receipts; live model remains `NOTRUN`.
+
 There is no paid-review launch route in this API. The separate operator-only
 [Claude worker](claude-transport.md) uses signed server-owned descriptors and
 PostgreSQL accounting. Once imported with current authority and verified

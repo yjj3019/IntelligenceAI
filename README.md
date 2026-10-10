@@ -1,5 +1,9 @@
 # IntelligenceAI
 
+[유료 검토 승인·요청 화면](docs/paid-admission.ko.md)을 추가했다. 기존 운영
+프로필의 비용 상한을 확인하고 승인·요청 1회를 기록한다. 운영 admission과
+credential 확인이 없으면 실제 모델은 `NOTRUN`이다.
+
 [Claude 읽기 전용 transport](docs/claude-transport.ko.md)를 별도 Linux worker에
 추가했다. 실제 HTTP broker·PostgreSQL 예산 예약·namespace relay·cgroup 종료
 검사를 구현했다. 검증에는 가짜 provider를 사용하며 실제 유료 호출·운영 배포와
