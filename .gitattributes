@@ -1,1 +1,3 @@
 * text=auto eol=lf
+# Golden upstream bytes must keep the same SHA on all eight core CI environments.
+tests/support/upstream/** -text

@@ -2145,6 +2145,37 @@ dialog::backdrop {
     margin-left: 28px;
   }
 }
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.readiness-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.readiness-table caption {
+  text-align: left;
+  color: var(--muted);
+  padding: 10px 0;
+}
+.readiness-table th,
+.readiness-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.readiness-table ul {
+  padding-left: 16px;
+  margin: 0;
+  line-height: 1.65;
+}
+@media (max-width: 600px) {
+  .readiness-table {
+    min-width: 550px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;
