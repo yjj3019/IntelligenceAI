@@ -1,5 +1,7 @@
 # 실제 모델 실행 권한의 서명 계약
 
+[합성 vendor 실행 계약](web-approved-vendor.md)은 승인부터 DB 일회성 예약, 현재 세션·권한 재검사, 고정 fake 프로세스와 private 결과까지 설명합니다. 이 경로는 아래의 유료 실행 receipt를 소비하지 않으며 실제 provider·격리·비용 제어는 별도 미완료 작업입니다.
+
 이번 단계는 서버 내부 증거의 서명과 승인 바인딩을 검증합니다. 검증에 성공해도
 `VERIFIED_SIGNATURES_ONLY`, 실행 `BLOCKED`, 모델 `NOTRUN`을 반환합니다.
 실제 credential broker, egress proxy, 자원·비용 제한기와 vendor 실행기는 아직 연결하지 않았습니다.

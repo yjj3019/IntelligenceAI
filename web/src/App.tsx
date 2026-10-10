@@ -804,7 +804,9 @@ function WorkspaceApp() {
           ? "Cancellation requested. Termination has not been confirmed."
           : result.state === "QUEUED"
             ? "Fixed fixture queued. No paid model or external action is authorized."
-            : "Saved to the private ledger. Execution remains disabled.",
+            : result.state === "VENDOR_QUEUED"
+              ? "Approved synthetic vendor queued. No paid model is authorized."
+              : "Saved to the private ledger. Execution remains disabled.",
       );
       if (operation === "tasks" && result.id) {
         setForm({ title: "", request: "", profile: "python-review" });
@@ -1707,6 +1709,27 @@ function WorkspaceApp() {
                           {t("Run fixed fixture")}
                         </button>
                         <button
+                          className="button primary"
+                          disabled={
+                            !active ||
+                            !canWrite ||
+                            busy ||
+                            task.state !== "READY_FOR_APPROVAL" ||
+                            !task.approval ||
+                            task.approval.expires_at <=
+                              Math.floor(Date.now() / 1000) ||
+                            connections?.fixture_execution !== "AUTHORIZED" ||
+                            task.vendor_runs?.some(
+                              (run) => run.generation === task.generation,
+                            )
+                          }
+                          onClick={() =>
+                            void perform(taskPath + "run-approved-fixture")
+                          }
+                        >
+                          {t("Run approved synthetic vendor")}
+                        </button>
+                        <button
                           className="button secondary"
                           onClick={() => navigate("candidate", task.id)}
                         >
@@ -1798,6 +1821,34 @@ function WorkspaceApp() {
                                   ))}
                                 </ol>
                               </>
+                            )}
+                          </article>
+                        ))}
+                      </section>
+                    )}
+                    {!!task.vendor_runs?.length && (
+                      <section className="panel">
+                        <h2>{t("Approved synthetic vendor runs")}</h2>
+                        <p className="muted">
+                          {t(
+                            "These results come from a fixed fake executable. Live models and OS isolation remain unverified.",
+                          )}
+                        </p>
+                        {task.vendor_runs.map((run) => (
+                          <article className="receipt-card" key={run.id}>
+                            <code>{run.id}</code> <Badge state={run.state} />
+                            <p>
+                              {t(
+                                run.result?.termination_confirmed
+                                  ? "Synthetic process termination confirmed. Live model NOTRUN."
+                                  : "Receipt pending. Lease expiry does not confirm termination.",
+                              )}
+                            </p>
+                            {run.result?.output && (
+                              <p>
+                                {t(run.result.output.message)}:{" "}
+                                {run.result.output.value}
+                              </p>
                             )}
                           </article>
                         ))}

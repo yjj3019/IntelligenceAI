@@ -20,9 +20,11 @@ from intelligenceai.web.store import (
     now,
     projects,
     receipts,
+    sessions,
     tasks,
     uid,
     users,
+    vendor_invocations,
 )
 
 
@@ -140,6 +142,20 @@ class Service:
                     ]
                 )
             )
+            result["vendor_runs"] = [
+                dict(value)
+                for value in conn.execute(
+                    select(
+                        vendor_invocations.c.id,
+                        vendor_invocations.c.generation,
+                        vendor_invocations.c.state,
+                        vendor_invocations.c.result,
+                    )
+                    .where(vendor_invocations.c.task_id == task_id)
+                    .order_by(vendor_invocations.c.generation.desc())
+                    .limit(10)
+                ).mappings()
+            ]
             return result
 
     @staticmethod
@@ -269,6 +285,18 @@ class Service:
             )
             if task["state"] == "CANCELLED":
                 return {"id": task_id, "state": "CANCELLED"}
+            vendor = (
+                conn.execute(
+                    select(vendor_invocations)
+                    .where(
+                        vendor_invocations.c.task_id == task_id,
+                        vendor_invocations.c.generation == task["generation"],
+                    )
+                    .with_for_update()
+                )
+                .mappings()
+                .first()
+            )
             completed = (
                 conn.execute(
                     select(attempts).where(
@@ -292,6 +320,29 @@ class Service:
             confirmed = (
                 job["state"] in {"HELD", "QUEUED"} and job["lease_token"] is None
             ) or confirmed_complete
+            if vendor:
+                confirmed = bool(
+                    vendor["state"] == "RESERVED"
+                    and job["lease_token"] is None
+                    or vendor["state"] in {"COMPLETED", "TERMINATED"}
+                    and vendor["result"]
+                    and vendor["result"].get("termination_confirmed") is True
+                    and job["lease_token"] is None
+                )
+                if vendor["state"] == "RESERVED" and confirmed:
+                    conn.execute(
+                        update(vendor_invocations)
+                        .where(vendor_invocations.c.id == vendor["id"])
+                        .values(
+                            state="TERMINATED",
+                            result={
+                                "kind": "never_started",
+                                "termination_confirmed": True,
+                                "scope": "FAKE_VENDOR_TEST_ONLY",
+                                "live_model": "NOTRUN",
+                            },
+                        )
+                    )
             if job["state"] == "FINISHED" and not confirmed_complete:
                 raise Problem(409, "termination_receipt_required")
             state = "CANCELLED" if confirmed else "CANCEL_REQUESTED"
@@ -403,7 +454,7 @@ class Service:
         )
 
     @staticmethod
-    def check_binding(task, project, binding):
+    def check_binding(task, project, binding, *, states=frozenset({"READY_FOR_APPROVAL"})):
         expected = {
             "candidate_digest": task["candidate_digest"],
             "policy_digest": project["policy_digest"],
@@ -411,7 +462,7 @@ class Service:
             "destination_id": task["destination_id"],
             "generation": task["generation"],
         }
-        if not task["evidence_verified"] or task["state"] != "READY_FOR_APPROVAL":
+        if not task["evidence_verified"] or task["state"] not in states:
             raise Problem(409, "verified_evidence_required")
         if any(binding.get(k) != v for k, v in expected.items()):
             raise Problem(409, "approval_binding_changed")
@@ -462,7 +513,11 @@ class Service:
             # Legacy/operator-imported static reviews have no runner mapping.
             return
         values = list(
-            conn.execute(select(artifacts).where(artifacts.c.task_id == task["id"])).mappings()
+            conn.execute(
+                select(artifacts).where(
+                    artifacts.c.task_id == task["id"], artifacts.c.kind == "candidate"
+                )
+            ).mappings()
         )
         if (
             digest(snapshot["candidate"]) != task["candidate_digest"]
@@ -478,6 +533,145 @@ class Service:
                 or item["digest"] != hashlib.sha256(content.encode("utf-8")).hexdigest()
             ):
                 raise Problem(409, "approval_binding_changed")
+
+    def approved_fixture_authority(self, conn, project, task, actor, session_hash):
+        """Current DB authority for the fixed synthetic executable, never a paid call."""
+        self.authorize(conn, actor, project["id"], {"owner", "operator"})
+        session = (
+            conn.execute(
+                select(sessions).where(sessions.c.token_hash == session_hash).with_for_update()
+            )
+            .mappings()
+            .first()
+        )
+        if (
+            not session
+            or session["revoked"]
+            or session["expires_at"] <= now()
+            or session["data"].get("user_id") != actor
+        ):
+            raise Problem(409, "execution_session_required")
+        approved = (
+            conn.execute(
+                select(approvals).where(approvals.c.task_id == task["id"]).with_for_update()
+            )
+            .mappings()
+            .first()
+        )
+        if not approved:
+            raise Problem(409, "current_review_approval_required")
+        self.authorize(conn, approved["actor_id"], project["id"], {"owner", "approver"})
+        self.check_binding(
+            task,
+            project,
+            approved["binding"],
+            states=frozenset(
+                {
+                    "READY_FOR_APPROVAL",
+                    "VENDOR_QUEUED",
+                    "VENDOR_RUNNING",
+                }
+            ),
+        )
+        snapshot = conn.execute(
+            select(attempts.c.receipt).where(
+                attempts.c.task_id == task["id"],
+                attempts.c.generation == task["generation"],
+                attempts.c.phase == "RECEIVED",
+            )
+        ).scalar()
+        if not snapshot or snapshot.get("scope") != "FIXTURE_STATIC_ONLY":
+            raise Problem(409, "owned_fixture_receipt_required")
+        self.check_snapshot(conn, task)
+        grant = (
+            conn.execute(
+                select(execution_grants).where(execution_grants.c.project_id == project["id"])
+            )
+            .mappings()
+            .first()
+        )
+        if (
+            not grant
+            or grant["mode"] != "fixed-fixture"
+            or grant["expires_at"] <= now()
+            or grant["policy_digest"] != project["policy_digest"]
+        ):
+            raise Problem(409, "fixture_execution_grant_required")
+        return approved, session, grant
+
+    def run_approved_fixture(self, actor, project_id, task_id, key, *, session_hash):
+        def operation(conn, project):
+            task = self.task_row(conn, project_id, task_id)
+            job = (
+                conn.execute(select(jobs).where(jobs.c.task_id == task_id).with_for_update())
+                .mappings()
+                .one()
+            )
+            approved, session, grant = self.approved_fixture_authority(
+                conn, project, task, actor, session_hash
+            )
+            if conn.execute(
+                select(vendor_invocations.c.id).where(
+                    vendor_invocations.c.task_id == task_id,
+                    vendor_invocations.c.generation == task["generation"],
+                )
+            ).first():
+                raise Problem(409, "invocation_already_reserved")
+            if job["state"] != "FINISHED" or job["lease_token"] or job["cancel_requested"]:
+                raise Problem(409, "approved_fixture_not_available")
+            invocation_id = uid()
+            binding = approved["binding"]
+            conn.execute(
+                insert(vendor_invocations).values(
+                    id=invocation_id,
+                    project_id=project_id,
+                    task_id=task_id,
+                    generation=task["generation"],
+                    actor_id=actor,
+                    session_hash=session_hash,
+                    approved_by=approved["actor_id"],
+                    binding=binding,
+                    binding_digest=digest(binding),
+                    deadline=min(
+                        now() + 300,
+                        binding["expires_at"],
+                        session["expires_at"],
+                        grant["expires_at"],
+                    ),
+                    state="RESERVED",
+                    created_at=now(),
+                )
+            )
+            conn.execute(update(jobs).where(jobs.c.id == job["id"]).values(state="VENDOR_QUEUED"))
+            conn.execute(update(tasks).where(tasks.c.id == task_id).values(state="VENDOR_QUEUED"))
+            self.record(
+                conn,
+                project_id,
+                actor,
+                "fixture.vendor_reserved",
+                {
+                    "invocation_id": invocation_id,
+                    "scope": "FAKE_VENDOR_TEST_ONLY",
+                    "live_model": "NOTRUN",
+                },
+                task_id,
+            )
+            return {
+                "id": task_id,
+                "invocation_id": invocation_id,
+                "state": "VENDOR_QUEUED",
+                "execution_enabled": False,
+                "scope": "FAKE_VENDOR_TEST_ONLY",
+            }
+
+        return self.mutate(
+            actor,
+            project_id,
+            key,
+            {"run_approved_fixture": task_id},
+            {"owner", "operator"},
+            operation,
+        )
 
     def reject(self, actor, project_id, task_id, key):
         def operation(conn, _):

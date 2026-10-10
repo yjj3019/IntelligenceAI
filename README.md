@@ -1,5 +1,7 @@
 # IntelligenceAI
 
+승인된 고정 fake 프로세스의 DB 일회성 예약·실행 직전 권한 검사·private 결과·취소/복구 경로는 [합성 vendor 실행 계약](docs/web-approved-vendor.md)에 정리했습니다. 모델 호출은 0회이며 실제 provider와 OS 격리는 미검증입니다.
+
 Provider 격리 후속 구현으로 [내부 실행 계약과 Linux 오프라인 probe](docs/provider-isolation.ko.md)를 추가했습니다. 연결 화면에서 OS·provider·실행 모드별 차단 사유를 확인할 수 있습니다. 실제 provider·유료 모델은 계속 비활성화하며 오프라인 격리 검사를 실제 모델 실행 성공으로 계산하지 않습니다.
 
 [실제 모델 실행 권한의 서명 계약](docs/live-authority-ko.md)은 승인과 manifest에 결합된 증거 6개의 서명·역할·만료를 검증합니다. 정상 증거도 서명 검증 결과만 반환하며 실행은 `BLOCKED`, 모델은 `NOTRUN`을 유지합니다. 실제 broker·egress·자원·비용 통제와 일회성 실행 예약은 후속 구현·운영 검증이 필요합니다.

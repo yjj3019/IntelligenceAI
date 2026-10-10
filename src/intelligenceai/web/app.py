@@ -273,6 +273,14 @@ def create_app(settings: Settings, *, db=None, testing=False):
     @app.post("/api/projects/{project_id}/tasks/{task_id}/{action}")
     def action(request: Request, project_id: str, task_id: str, action: str, data: EmptyInput):
         user_id, key = mutation(request)
+        if action == "run-approved-fixture":
+            return service.run_approved_fixture(
+                user_id,
+                project_id,
+                task_id,
+                key,
+                session_hash=request.scope.get("server_session_hash"),
+            )
         actions = {
             "cancel": service.cancel,
             "recover": service.recover,

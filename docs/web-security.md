@@ -26,3 +26,5 @@ model authorization. Namespace cleanup is independently tested with a setsid
 descendant rather than inferred from leader exit. Trees must remain immutable
 across pinning/launch; hostile host mutation and cgroup quotas are not implemented.
 Provider and generated-code network separation still requires a verified broker.
+
+The [approved fake vendor supervisor](web-approved-vendor.md) requires a current server session, requester and approver roles, bound current review approval and operator fixture grant, with durable one-time task/generation reservation and current-authority checks at Popen. Its child accepts only a fixed bounded synthetic descriptor and inherits no secrets. STARTING cannot be replayed without actual termination proof; lease expiry never proves cancellation. This path does not use the signed live receipt verifier or unlock any live provider.

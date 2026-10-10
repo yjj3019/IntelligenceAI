@@ -46,6 +46,7 @@ class ServerSessions:
                 )
         original = copy.deepcopy(row["data"]) if row else None
         scope["session"] = copy.deepcopy(original) if original else session_data()
+        scope["server_session_hash"] = row["token_hash"] if row else None
 
         async def wrapped_send(message):
             nonlocal token

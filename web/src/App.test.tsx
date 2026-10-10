@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { demoAudit, demoConnections, demoProject, demoTasks } from "./demo";
+import type { Task } from "./types";
 
 beforeEach(() => {
   localStorage.setItem("iai.language", "en");
@@ -146,6 +147,152 @@ function privateFetch(
 }
 
 describe("private boundary and failure flows", () => {
+  function approvedVendor(
+    taskOverrides: Partial<Task> = {},
+    authorized = true,
+  ) {
+    history.replaceState({}, "", "/app/task");
+    const mock = privateFetch(200, {
+      state: "READY_FOR_APPROVAL",
+      generation: 2,
+      approval: {
+        candidate_digest: "a".repeat(64),
+        evidence_digest: "b".repeat(64),
+        policy_digest: "c".repeat(64),
+        destination_id: "private-review",
+        generation: 2,
+        expires_at: Math.floor(Date.now() / 1000) + 300,
+      },
+      ...taskOverrides,
+    });
+    const base = mock.getMockImplementation()!;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/connections"))
+        return new Response(
+          JSON.stringify({
+            ...demoConnections,
+            fixture_execution: authorized ? "AUTHORIZED" : "BLOCKED",
+          }),
+        );
+      if (String(input).endsWith("/run-approved-fixture"))
+        return new Response(
+          JSON.stringify({ id: "task-fixture", state: "VENDOR_QUEUED" }),
+        );
+      return base(input, options);
+    });
+    return mock;
+  }
+  it("queues a synthetic vendor only on explicit action, with old generations preserved", async () => {
+    const mock = approvedVendor({
+      vendor_runs: [
+        { id: "old-run", generation: 1, state: "TERMINATED", result: null },
+      ],
+    });
+    render(<App />);
+    const button = await screen.findByRole("button", {
+      name: "Run approved synthetic vendor",
+    });
+    await waitFor(() => expect(button).toBeEnabled());
+    const posts = () =>
+      mock.mock.calls.filter(([, opts]) => opts?.method === "POST");
+    expect(posts()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    const refreshed = await screen.findByRole("button", {
+      name: "Run approved synthetic vendor",
+    });
+    await waitFor(() => expect(refreshed).toBeEnabled());
+    expect(posts()).toHaveLength(0);
+    fireEvent.click(refreshed);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(String(posts()[0][0])).toMatch(/\/run-approved-fixture$/);
+    expect(posts()[0][1]?.body).toBe("{}");
+    expect(
+      await screen.findByText(
+        "Approved synthetic vendor queued. No paid model is authorized.",
+      ),
+    ).toBeVisible();
+  });
+  it.each(["missing", "expired", "duplicate", "no-capability"])(
+    "blocks synthetic execution with %s authority",
+    async (reason) => {
+      const mock = approvedVendor(
+        reason === "missing"
+          ? { approval: null }
+          : reason === "expired"
+            ? {
+                approval: {
+                  candidate_digest: "a".repeat(64),
+                  evidence_digest: "b".repeat(64),
+                  policy_digest: "c".repeat(64),
+                  generation: 2,
+                  destination_id: "private-review",
+                  expires_at: 1,
+                },
+              }
+            : reason === "duplicate"
+              ? {
+                  vendor_runs: [
+                    {
+                      id: "current",
+                      generation: 2,
+                      state: "RESERVED",
+                      result: null,
+                    },
+                  ],
+                }
+              : {},
+        reason !== "no-capability",
+      );
+      render(<App />);
+      expect(
+        await screen.findByRole("button", {
+          name: "Run approved synthetic vendor",
+        }),
+      ).toBeDisabled();
+      expect(
+        mock.mock.calls.filter(([, opts]) => opts?.method === "POST"),
+      ).toHaveLength(0);
+    },
+  );
+  it("labels synthetic output and process termination without claiming a live model", async () => {
+    approvedVendor({
+      state: "FIXTURE_COMPLETED",
+      vendor_runs: [
+        {
+          id: "synthetic-run",
+          generation: 2,
+          state: "COMPLETED",
+          result: {
+            kind: "completed",
+            scope: "FAKE_VENDOR_TEST_ONLY",
+            live_model: "NOTRUN",
+            termination_confirmed: true,
+            output: {
+              message: "Synthetic fixture completed",
+              value: 42,
+              status: "SYNTHETIC_OUTPUT",
+            },
+          },
+        },
+      ],
+    });
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", {
+        name: "Approved synthetic vendor runs",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Synthetic process termination confirmed. Live model NOTRUN.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText(/fixed fake executable/)).toBeVisible();
+    expect(screen.getByText("Synthetic fixture completed: 42")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Run approved synthetic vendor" }),
+    ).toBeDisabled();
+  });
   it("shows server provider blockers in both languages without enabling execution", async () => {
     history.replaceState({}, "", "/app/connections");
     const mock = privateFetch();

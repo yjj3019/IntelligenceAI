@@ -58,7 +58,7 @@ server는 기본 `127.0.0.1:8080`에서 실행됩니다. 기존 ingress가 HTTPS
 
 `deploy/Dockerfile`과 `deploy/compose.yml`은 Linux 배포용 준비 산출물입니다. 외부 DB/기존 OIDC만 참조하고 host port는 loopback에 한정합니다. 비특권 user, read-only filesystem, capability 제거와 resource limit을 정의했지만 실제 container build·TLS ingress·서버 운영은 아직 검증하지 않았습니다. 현재 runtime image는 초기 버전 tag로 고정했으며 실제 운영 전 승인한 immutable image digest와 취약점 검사를 확정해야 합니다.
 
-Private 콘솔에 작업을 저장하면 `BLOCKED`와 `HELD`로 기록됩니다. API에서 임의 저장소 코드나 vendor CLI를 실행하지 않습니다. 별도 supervisor는 운영자 권한과 명시적인 실행 요청이 있는 고정 fixture만 처리합니다. `IAI_RUNNER_DATABASE_URL`과 `IAI_RUNNER_STATE_DIR`는 supervisor에만 설정하며 실행 subprocess에 상속하지 않습니다. 기존 DB에는 additive table 2개만 추가합니다. [runner 운영 계약](web-runner.md)에 초기화·만료 권한·단일 실행·receipt 복구 명령과 최소 DB 권한이 있습니다. paid 모델·게시·push·merge·deploy는 항상 비활성이고 OS 격리는 미검증입니다. 배포 정보만 제공해도 이 기능들은 자동 활성화되지 않습니다. 이번 후속 작업은 최종 배포를 제외합니다.
+Private 콘솔에 작업을 저장하면 `BLOCKED`와 `HELD`로 기록됩니다. API에서 임의 저장소 코드나 vendor CLI를 실행하지 않습니다. 별도 supervisor는 운영자 권한과 명시적인 실행 요청이 있는 고정 fixture만 처리합니다. `IAI_RUNNER_DATABASE_URL`과 `IAI_RUNNER_STATE_DIR`는 supervisor에만 설정하며 실행 subprocess에 상속하지 않습니다. 기존 DB에는 additive table 3개만 추가합니다. [runner 운영 계약](web-runner.md)에 초기화·만료 권한·단일 실행·receipt 복구 명령과 최소 DB 권한이 있습니다. paid 모델·게시·push·merge·deploy는 항상 비활성이고 OS 격리는 미검증입니다. 배포 정보만 제공해도 이 기능들은 자동 활성화되지 않습니다. 이번 후속 작업은 최종 배포를 제외합니다.
 
 ## 공개 정적 Sites 배포
 
@@ -97,3 +97,5 @@ production deployment. Before live rollout, independently verify credentials,
 provider-only egress, budgets, immutable materialization and OS/provider/mode
 capabilities. CI package installation is limited to its ephemeral Linux test job;
 user-PC packages, AppArmor/sysctl changes and privileged fallback are excluded.
+
+승인된 fake 프로세스 경로는 같은 DB의 additive invocation table을 사용합니다. 기존 운영자 설정 `IAI_RUNNER_DATABASE_URL`, `IAI_RUNNER_STATE_DIR`로 별도 `python -m intelligenceai.web.vendor_runner --once`를 실행합니다. 필요한 세션·승인 읽기 권한과 crash/reconcile 조건은 [합성 vendor 실행 계약](web-approved-vendor.md)에 정리했습니다. 새 credential이나 실제 모델 권한을 만들지 않으며 유료 실행은 계속 비활성입니다. 루프백 테스트 fixture에는 이 runner가 포함되지만 운영 image에 테스트 issuer를 포함하지 않습니다.

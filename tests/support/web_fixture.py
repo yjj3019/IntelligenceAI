@@ -37,6 +37,7 @@ from intelligenceai.web.store import (
     uid,
     users,
 )
+from intelligenceai.web.vendor_runner import ApprovedFixtureRunner
 
 ORIGIN = "http://127.0.0.1:4173"
 ISSUER = ORIGIN + "/oidc"
@@ -156,6 +157,7 @@ def browser_app(directory):
             )
         )
     runner = Runner(db, Path(directory) / "runner")
+    vendor = ApprovedFixtureRunner(db, Path(directory) / "vendor")
     for title in ["Held fixture task", "Failed fixture task", "Uncertain fixture task"]:
         result = service.submit(
             owner,
@@ -204,6 +206,7 @@ def browser_app(directory):
             while not stop.wait(0.25):
                 try:
                     runner.run_once()
+                    vendor.run_once()
                 except Exception:
                     continue  # Fail closed; exception text is never exposed or stored.
 

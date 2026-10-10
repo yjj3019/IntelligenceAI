@@ -122,6 +122,26 @@ approvals = Table(
     Column("binding", JSON, nullable=False),
     Column("created_at", BigInteger, nullable=False),
 )
+vendor_invocations = Table(
+    "web_vendor_invocations",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("project_id", ForeignKey(projects.c.id), nullable=False),
+    Column("task_id", ForeignKey(tasks.c.id), nullable=False),
+    Column("generation", Integer, nullable=False),
+    Column("actor_id", ForeignKey(users.c.id), nullable=False),
+    Column("session_hash", ForeignKey(sessions.c.token_hash), nullable=False),
+    Column("approved_by", ForeignKey(users.c.id), nullable=False),
+    Column("binding", JSON, nullable=False),
+    Column("binding_digest", String(64), nullable=False),
+    Column("deadline", BigInteger, nullable=False),
+    Column("state", String(32), nullable=False),
+    Column("lease_token", String(64)),
+    Column("lease_expires_at", BigInteger),
+    Column("result", JSON),
+    Column("created_at", BigInteger, nullable=False),
+    UniqueConstraint("task_id", "generation"),
+)
 artifacts = Table(
     "web_artifacts",
     metadata,

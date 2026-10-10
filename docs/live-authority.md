@@ -29,9 +29,11 @@ do not independently prove the underlying OS, network, credential or billing
 claims. Tests use ephemeral, in-memory keys and synthetic evidence digests.
 They are not real-provider evidence.
 
-Before a production runner can consume these contracts it still needs durable
-one-time invocation reservation; current session/membership, generation,
-approval and cancellation rechecks; independent attestor provisioning and key
+The separate [approved synthetic vendor flow](web-approved-vendor.md) exercises
+durable one-time reservation and current session/membership, generation,
+approval and cancellation rechecks using a fixed fake executable. It cannot
+consume these statements or enable a live provider. Before a production runner
+can consume these contracts it still needs independent attestor provisioning and key
 revocation; verified secret brokering and provider-only egress; actual resource
 and billing enforcement; immutable host materialization; and authorization for
 the specific paid call. Receipts must be rechecked at the actual spawn boundary.

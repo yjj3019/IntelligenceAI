@@ -25,6 +25,11 @@ it("maps safe recovery/approval conflict codes to distinct KO/EN guidance", () =
     "approval_binding_changed",
     "approval_expired_or_ttl_invalid",
     "idempotency_conflict",
+    "execution_session_required",
+    "current_review_approval_required",
+    "owned_fixture_receipt_required",
+    "invocation_already_reserved",
+    "approved_fixture_not_available",
   ];
   const messages = codes.map((code) => message(new ApiError(409, code)));
   expect(new Set(messages).size).toBe(codes.length);
