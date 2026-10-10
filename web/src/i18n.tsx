@@ -2,6 +2,34 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  "PAID REVIEW / OPERATOR SETUP PENDING": "유료 검토 / 운영 구성 대기",
+  "Approve one bounded model review": "상한이 정해진 모델 검토 1회 승인",
+  "Each execution needs a fresh approval. This screen records consent and one request; it does not start a model or supply credentials.":
+    "실행마다 새 승인이 필요합니다. 이 화면은 동의와 요청 1회를 기록하며 모델 실행이나 credential 제공을 수행하지 않습니다.",
+  "Live model: NOTRUN. Signed controls, verified Linux runtime and separate credential confirmation are still required.":
+    "실제 모델: NOTRUN. 서명된 통제, 검증된 Linux 실행환경과 별도 credential 확인이 필요합니다.",
+  "An operator must provision an existing model profile and budget. Model names, pricing and credentials are never guessed.":
+    "운영자가 기존 모델 프로필과 예산을 구성해야 합니다. 모델명·가격·credential을 임의로 정하지 않습니다.",
+  "Operator model profile": "운영자 모델 프로필",
+  "Project / task": "프로젝트 / 작업",
+  "Provider / model / effort": "Provider / 모델 / effort",
+  "Maximum calls": "최대 호출 수",
+  "Maximum cost": "최대 비용",
+  Expires: "만료",
+  "One execution request recorded. Provider NOTRUN; operator admission is pending.":
+    "실행 요청 1회를 기록했습니다. Provider NOTRUN이며 운영 admission을 기다립니다.",
+  "This paid intent expired. Refresh before preparing a new approval.":
+    "유료 승인 요청이 만료되었습니다. 새 승인을 준비하기 전에 새로고침하세요.",
+  "Consent recorded for this exact quote. No model has started.":
+    "이 견적에 대한 동의를 기록했습니다. 모델은 실행되지 않았습니다.",
+  "Review this fixed quote before approving its cost ceiling.":
+    "비용 상한을 승인하기 전에 고정된 견적을 확인하세요.",
+  "Prepare paid review quote": "유료 검토 견적 준비",
+  "Approve this cost ceiling": "이 비용 상한 승인",
+  "Request this review once": "이 검토 1회 요청",
+  "Check saved paid request": "저장된 유료 요청 확인",
+  "If a response is interrupted, check saved state or retry the same request. Navigation never sends an approval. Cancellation and recovery invalidate the current task binding.":
+    "응답이 끊기면 저장 상태를 확인하거나 같은 요청을 재시도하세요. 화면 이동은 승인을 전송하지 않습니다. 취소와 복구는 현재 작업의 승인 결합을 무효화합니다.",
   "The execution session is no longer valid. Sign in again and review current authority.":
     "실행 세션이 유효하지 않습니다. 다시 로그인하고 현재 권한을 확인하세요.",
   "A current bound review approval is required before synthetic execution.":

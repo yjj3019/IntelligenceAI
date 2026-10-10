@@ -1,5 +1,9 @@
 # IntelligenceAI
 
+The private console now records [bounded paid-review consent and one-time
+operator requests](docs/paid-admission.md). Requests keep provider `NOTRUN`;
+they do not dispatch a model, reserve funds or supply credentials.
+
 The separate [Claude review worker](docs/claude-transport.md) implements an actual
 HTTP broker, PostgreSQL budget reservation, namespace relay and cgroup cleanup.
 Tests use fake providers. Paid execution, operational deployment and GUI paid

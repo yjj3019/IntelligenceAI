@@ -38,6 +38,7 @@ import type {
 } from "./types";
 import { api, ApiError, message, mutation } from "./api";
 import { LocaleProvider, LanguageSwitcher, useLocale } from "./i18n";
+import { PaidReviewPanel } from "./PaidReviewPanel";
 import {
   demoAudit,
   demoConnections,
@@ -2164,6 +2165,30 @@ function WorkspaceApp() {
                         )}
                       </p>
                     </section>
+                    {active && session && project && (
+                      <PaidReviewPanel
+                        key={JSON.stringify([
+                          session.user.id,
+                          session.csrf,
+                          project.id,
+                          task.id,
+                          task.generation,
+                          task.state,
+                          task.candidate_digest,
+                          task.evidence_digest,
+                          project.policy_digest,
+                          project.role,
+                        ])}
+                        projectId={project.id}
+                        taskId={task.id}
+                        generation={task.generation}
+                        csrf={session.csrf}
+                        onAuthorityLost={(status) => {
+                          clearPrivate();
+                          setAuthNeeded(status === 401);
+                        }}
+                      />
+                    )}
                   </div>
                 ) : (
                   <Empty

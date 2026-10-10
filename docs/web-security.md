@@ -1,5 +1,13 @@
 # Web security and remaining evidence
 
+[Paid request consent](paid-admission.md) binds one server session owner to
+immutable scope/currency/cost limits. It accepts only a provisioned profile ID
+or request ID/digest, never model overrides, actor, credentials, environments,
+commands or URLs. Each mutation takes the project lock and rechecks current
+authority/budget; newer quotes supersede old consent, and task cancel/recovery
+revoke request records. No HTTP route dispatches paid model execution. Existing
+operator worker receipt verification and launch authorization remain mandatory.
+
 The [Claude transport](claude-transport.md) keeps provider credentials in an
 operator-injected broker fd/memory callback, requires one-time durable HTTP
 admission and drains upstream accounting after local cancellation. The CLI is

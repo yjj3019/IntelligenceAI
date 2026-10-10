@@ -132,6 +132,16 @@ function privateFetch(
       else if (path === "/api/projects/" + project.id) body = project;
       else if (path.endsWith("/audit")) body = demoAudit;
       else if (path.endsWith("/connections")) body = demoConnections;
+      else if (path.endsWith("/paid-review"))
+        body = {
+          profiles: [],
+          requests: [],
+          can_consent: true,
+          generation: task.generation,
+          execution_enabled: false,
+          live_model: "NOTRUN",
+          blockers: [],
+        };
       else if (path.endsWith("/tasks") && !options?.method) body = [task];
       else if (path.endsWith("/tasks/" + task.id)) body = task;
       else if (path.endsWith("/cancel"))

@@ -105,3 +105,16 @@ capabilities. CI package installation is limited to its ephemeral Linux test job
 user-PC packages, AppArmor/sysctl changes and privileged fallback are excluded.
 
 승인된 fake 프로세스 경로는 같은 DB의 additive invocation table을 사용합니다. 기존 운영자 설정 `IAI_RUNNER_DATABASE_URL`, `IAI_RUNNER_STATE_DIR`로 별도 `python -m intelligenceai.web.vendor_runner --once`를 실행합니다. 필요한 세션·승인 읽기 권한과 crash/reconcile 조건은 [합성 vendor 실행 계약](web-approved-vendor.md)에 정리했습니다. 새 credential이나 실제 모델 권한을 만들지 않으며 유료 실행은 계속 비활성입니다. 루프백 테스트 fixture에는 이 runner가 포함되지만 운영 image에 테스트 issuer를 포함하지 않습니다.
+
+
+## 유료 검토 승인·요청 기록
+
+[승인·요청 계약](paid-admission.ko.md)은 운영자가 기존 검증 프로필과 예산을
+구성한 뒤 사용한다. `web_paid_profiles`, `web_paid_requests`는 기존
+`web.manage init-db` 절차로 추가할 수 있다. 백업과 schema 변경 검토를 먼저
+진행한다. 기본 프로필이나 유료 활성화 환경변수는 추가하지 않는다.
+
+이 GUI는 동의와 요청만 기록한다. 요청 dispatcher, 운영 서명 발급, 별도로
+확인된 기존 credential, 검증된 Linux 실행환경과 private HTTPS/OIDC/DB 연결이
+준비되기 전에는 provider를 호출하지 않는다. 계정·credential 생성이나 PC 포트
+외부 개방 없이 로컬 합성 계약과 CI만 검증했다.
