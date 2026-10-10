@@ -1,5 +1,7 @@
 # Security model
 
+The optional web console has a separate [web security model](docs/web-security.md): OIDC server sessions, PostgreSQL project authorization, private artifacts, CSRF/Origin/Host/CSP defenses, and a durable held queue. The public artifact is synthetic/read-only with no private API. No browser input can enable execution or paid providers. The local core boundaries below remain unchanged.
+
 This is a single-user local controller prototype. Do not expose its CLI or SQLite files to untrusted users. Live workers, arbitrary shell, model text as commands, recursive delegation, provider substitution and external publishing are disabled.
 
 ## Enforced application checks

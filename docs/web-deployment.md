@@ -1,0 +1,80 @@
+# GUI 실행·배포 안내
+
+공개 소개와 합성 데모는 backend 없이 배포할 수 있습니다. Private 콘솔은 실제 PostgreSQL·OIDC·HTTPS ingress가 필요합니다. 이번 구현에서는 서버 대상이나 외부 인증 정보가 제공되지 않았으므로 실제 private 배포와 해당 환경의 검증을 완료했다고 표시하지 않습니다.
+
+## 공개 정적 산출물
+
+Node 24와 저장소 전용 의존성을 사용합니다. 저장소 root에서 다음 순서로 준비합니다.
+
+```sh
+cd web
+npm ci --ignore-scripts
+npm run build:public
+cd ..
+uv run --frozen --extra web python scripts/pack_public_demo.py
+```
+
+폴더형 결과는 `web/dist-public/`, 단일 HTML은 `deliverables/public-demo.html`입니다. 단일 파일은 hash 탐색을 사용하므로 정적 iframe에서도 별도 서버 경로가 필요하지 않습니다. KO/EN 사전과 화면은 private build와 같은 소스를 사용합니다.
+
+HTML의 CSP는 모든 network 연결을 차단합니다. 실제 로그인 대신 private 배포 미연결 안내를 표시하며 자격 증명을 수집하지 않습니다. 호스팅 플랫폼이 module script나 CSP를 지원하지 않으면 지원 여부를 먼저 확인합니다. 제한을 우회하거나 backend가 연결된 것처럼 표시하지 않습니다. 공개할 파일은 `public-demo.html` 하나입니다. 진행 메모나 테스트 산출물은 게시하지 않습니다.
+
+로컬에서 공개 파일만 확인할 때는 아래와 같이 loopback에 한정합니다.
+
+```sh
+python -m http.server 4174 --bind 127.0.0.1 --directory deliverables
+```
+
+브라우저에서 `http://127.0.0.1:4174/public-demo.html`을 엽니다. 이 명령은 공개 서버 배포가 아닙니다. PC 포트를 외부에 개방하지 않습니다.
+
+## Private 배포 준비
+
+운영자는 기존 PostgreSQL DB, 검증할 OIDC issuer와 기존 client 등록, 공개 HTTPS origin, TLS ingress·인증서와 명시적인 proxy IP를 제공해야 합니다. 새 계정·유료 자원·credential·DNS·방화벽·터널은 이 안내가 자동으로 만들지 않습니다. 환경변수 이름은 `deploy/env.example`에 있으며 값은 저장소나 browser 입력에 넣지 않습니다.
+
+| 이름 | 의미 |
+| --- | --- |
+| `IAI_DATABASE_URL` | 기존 `postgresql+psycopg://` DB 연결. 운영자 secret manager 사용 |
+| `IAI_PUBLIC_ORIGIN` | path 없는 canonical HTTPS origin |
+| `IAI_OIDC_ISSUER` | 기존 HTTPS OIDC issuer |
+| `IAI_OIDC_CLIENT_ID` | 기존 client ID. callback은 `/auth/callback` |
+| `IAI_OIDC_CLIENT_SECRET` | 기존 credential. server에만 주입 |
+| `IAI_TRUSTED_PROXY_IPS` | 신뢰할 기존 ingress의 정확한 IP 목록. wildcard 금지 |
+| `IAI_STATIC_DIR` | 운영자가 정한 frontend build 경로 |
+| `IAI_LISTEN_HOST` | 기본 loopback. container 내부에서만 `0.0.0.0` 사용 |
+
+준비된 DB에 최초 schema를 만들고, 이미 존재하는 OIDC subject를 프로젝트 소유자로 등록합니다. 초기화 도구는 기존 schema를 자동 migration하지 않습니다. 기존 설치에는 먼저 백업과 별도 migration 검토가 필요합니다.
+
+```sh
+uv sync --frozen --extra web
+uv run --frozen --extra web python -m intelligenceai.web.manage init-db
+uv run --frozen --extra web python -m intelligenceai.web.manage bootstrap --subject EXISTING_SUBJECT --name "Project owner" --project "Private project"
+cd web
+npm ci --ignore-scripts
+npm run build
+cd ..
+uv run --frozen --extra web python -m intelligenceai.web.serve
+```
+
+server는 기본 `127.0.0.1:8080`에서 실행됩니다. 기존 ingress가 HTTPS를 종료하고 정확한 Host와 신뢰할 proxy IP를 전달해야 합니다. 실제 접속에서 Secure/HttpOnly/SameSite cookie, callback/state, 권한 회수와 교차 사용자 접근을 다시 검증합니다. 운영 ingress에 16 KiB body 제한, request timeout, rate limit을 적용하고 callback query·cookie·raw token을 access log에 남기지 않습니다. 실제 설정 변경은 배포 대상이 확인된 뒤 진행합니다.
+
+`deploy/Dockerfile`과 `deploy/compose.yml`은 Linux 배포용 준비 산출물입니다. 외부 DB/기존 OIDC만 참조하고 host port는 loopback에 한정합니다. 비특권 user, read-only filesystem, capability 제거와 resource limit을 정의했지만 실제 container build·TLS ingress·서버 운영은 아직 검증하지 않았습니다. 현재 runtime image는 초기 버전 tag로 고정했으며 실제 운영 전 승인한 immutable image digest와 취약점 검사를 확정해야 합니다.
+
+Private 콘솔에 작업을 저장해도 `BLOCKED`와 `HELD`로 기록됩니다. API에서 임의 저장소 코드나 vendor CLI를 실행하지 않습니다. 별도 Linux runner와 실제 증거 ingestion은 구현되지 않았으며 paid 모델·게시·push·merge·deploy는 항상 비활성입니다. 배포 정보만 제공해도 이 기능들이 자동 활성화되지는 않습니다.
+
+## 독립 로컬 검증
+
+```sh
+uv sync --frozen --extra dev --extra web
+uv run --frozen --extra web --extra dev pytest tests/test_web.py -q
+cd web
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run build:public
+cd ..
+uv run --frozen --extra web python tests/support/web_fixture.py
+```
+
+마지막 명령은 `127.0.0.1:4173` 전용 테스트 서버입니다. 실행마다 임시 SQLite와 테스트 사용자, 임시 서명 키를 만들며 인증 우회 endpoint를 제공하지 않습니다. 실제 Authlib client가 합성 issuer의 state·nonce·PKCE·JWT를 검사합니다. 이 fixture는 실제 OIDC/DB 운영 증거가 아니며 배포 image에 포함하지 않습니다. 지원된 전용 테스트 브라우저만 사용합니다. Chromium 설치나 보안 우회가 필요하면 진행하지 않고 차단 사항을 보고합니다.
+
+현재 결과와 남은 검증 항목은 [검증 기록](web-validation.md), 서비스 관계는 [웹 구조](web-architecture.md), API는 [계약 문서](web-api.md), 위협 경계는 [보안 문서](web-security.md)에 있습니다.

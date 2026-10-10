@@ -1,0 +1,23 @@
+# Preparation only. Use an existing operator-provided DB, OIDC registration and TLS ingress.
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports: ["127.0.0.1:8080:8080"]
+    environment:
+      IAI_DATABASE_URL: ${IAI_DATABASE_URL:?existing PostgreSQL URL required}
+      IAI_PUBLIC_ORIGIN: ${IAI_PUBLIC_ORIGIN:?canonical HTTPS origin required}
+      IAI_OIDC_ISSUER: ${IAI_OIDC_ISSUER:?existing HTTPS issuer required}
+      IAI_OIDC_CLIENT_ID: ${IAI_OIDC_CLIENT_ID:?existing registered client required}
+      IAI_OIDC_CLIENT_SECRET: ${IAI_OIDC_CLIENT_SECRET:?existing client credential required}
+      IAI_TRUSTED_PROXY_IPS: ${IAI_TRUSTED_PROXY_IPS:?explicit trusted ingress IP required}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+# No runner service: dispatch and paid providers are intentionally unimplemented.

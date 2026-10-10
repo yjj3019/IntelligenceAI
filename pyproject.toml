@@ -13,6 +13,14 @@ dependencies = ["langgraph==1.2.14", "langgraph-checkpoint-sqlite==3.1.0", "pyda
 
 [project.optional-dependencies]
 dev = ["pytest==8.4.2", "ruff==0.14.0", "hatchling==1.27.0"]
+web = [
+    "fastapi==0.143.0",
+    "uvicorn==0.54.0",
+    "sqlalchemy==2.1.4",
+    "psycopg[binary]==3.3.6",
+    "authlib==1.8.0",
+    "httpx==0.28.1",
+]
 
 [project.scripts]
 intelligenceai = "intelligenceai.cli:main"

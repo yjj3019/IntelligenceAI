@@ -1,5 +1,7 @@
 # 구조와 상태
 
+선택 설치하는 [웹 콘솔](web-architecture.md)은 같은 origin의 GUI·API, OIDC 서버 세션, PostgreSQL 프로젝트 인가와 영속 대기열을 사용합니다. 로컬 controller를 HTTP로 감싸지 않습니다. [API](web-api.md), [웹 보안](web-security.md), [배포](web-deployment.md)를 별도 계약으로 관리합니다. Linux runner와 외부 효과는 비활성입니다.
+
 이 버전은 하나의 로컬 사용자, 등록된 fixture writer와 정적 parser를 대상으로 합니다. 역할·provider·model·executor는 별개 필드입니다. registry의 enabled 상태와 실제 권한 검증이 실행 가능 여부를 결정합니다. worker 출력에 승인이나 정책을 넣어도 controller 권한으로 해석하지 않습니다.
 
 ```mermaid

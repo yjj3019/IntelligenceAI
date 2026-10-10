@@ -6,6 +6,16 @@ IntelligenceAI is an early local task controller. LangGraph persists workflow po
 
 This is a foundation, not a finished general AI assistant. It does not authenticate tools, call paid models, publish, merge or deploy. Meta AI is excluded.
 
+## Web GUI
+
+The web app provides public introduction/docs, a synthetic read-only demo, and a private project console with eight views: dashboard, projects/members, new task/plan preview, task/steps, candidate/checks, approval/recovery, connections/environments, and audit. KO/EN switching saves only the language preference; dates and numbers use Intl and the browser timezone.
+
+The private API uses a separate PostgreSQL ledger and opaque OIDC server sessions with project authorization. Submissions enter a durable HELD queue. The Linux runner, real models and external effects remain disabled. It does not expose the local CLI SQLite database, file locks or in-memory queue over HTTP. The public demo has no private data, login or writes.
+
+Read [architecture](docs/web-architecture.md), [API](docs/web-api.md), [security](docs/web-security.md), [deployment](docs/web-deployment.md) and [validation](docs/web-validation.md). Build with the optional web dependencies, then `npm ci --ignore-scripts`, `npm run build` and `npm run build:public` under `web/`. Run `uv run --frozen --extra web python scripts/pack_public_demo.py` from the repository root to create the self-contained `deliverables/public-demo.html`.
+
+A real private rollout needs an approved Linux destination, existing PostgreSQL and OIDC registration, and HTTPS ingress. No real public deployment has been performed without those details. Container recipes are prepared but not runtime-verified.
+
 ## Install and run
 
 A restricted [local stdio MCP service](docs/mcp.md) uses the same controller and official pinned Python SDK 1.26.0. It exposes capabilities/preview/submit/status/results/cancel only. Operator repository grants and durable admission keys restrict requests; approval and external actions are absent from model tools. No HTTP port or application registration is needed.

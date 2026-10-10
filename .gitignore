@@ -12,3 +12,14 @@ build/
 .tools/
 pytest-cache-files-*/
 
+node_modules/
+web/dist/
+web/dist-public/
+deliverables/*.html
+.tools/
+playwright-report/
+test-results/
+.env
+*.sqlite3
+*.tsbuildinfo
+deliverables/GUI_PROGRESS.md

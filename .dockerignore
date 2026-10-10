@@ -1,0 +1,12 @@
+.git
+.venv
+.tools
+.env
+**/node_modules
+web/dist
+web/dist-public
+deliverables
+tests
+test-results
+playwright-report
+**/*.sqlite3
