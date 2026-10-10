@@ -15,7 +15,7 @@ from pydantic import Field
 from .contracts import Contract, Plan, State
 from .controller import Controller, fixture_plan
 from .ledger import Ledger
-from .ownership import TaskLease
+from .ownership import TaskLease, TaskOwnershipConflict
 from .registry import registry
 from .security import SafetyError, digest, redact
 
@@ -188,8 +188,12 @@ class ControllerService:
         controller = Controller(self.root)
         try:
             controller.run(tid)
+        except TaskOwnershipConflict:
+            return {"task_id": tid, "execution": "OWNED_ELSEWHERE"}
         except Exception:
-            controller.ledger.invalidate_candidate(tid)
+            # Controller.run handles owned failures while holding the lease. Failures
+            # before ownership is acquired cannot authorize this host to mutate a task.
+            return {"task_id": tid, "execution": "FAILED_OR_UNVERIFIED"}
         finally:
             controller.close()
             with self.lock:

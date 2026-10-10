@@ -41,6 +41,8 @@ MCP 추가 구현: 같은 Controller의 로컬 stdio service, operator repositor
 
 ## 회귀 증거
 
+MCP runner와 CLI가 같은 작업을 실행하는 경합은 `tests/test_service_ownership.py`에서 실제 service submit 경로와 barrier로 재현합니다. task lease 충돌은 별도 TaskOwnershipConflict로 반환하며 상태·호출 원장을 변경하지 않습니다. 예상하지 못한 실행 실패의 후보 무효화는 Controller가 lease를 보유한 동안에만 수행합니다.
+
 추가 검토 반영: 승인 gate는 plan의 모든 step/check와 authoritative receipt를 대조합니다. Python·JSON fixture와 정적 검사 전용 DAG를 승인할 수 있고, 누락·추가·중복·stale proof는 기존 승인을 폐기합니다. writer의 선언 검사도 실행하며 임의 test/build는 UNVERIFIED로 차단합니다. admission 중 cancel이 generation을 바꾸면 READY로 덮어쓰지 않습니다. MCP startup recovery는 granted repository에 한정하며 실행 중인 controller의 task lease를 획득할 수 없으면 건드리지 않습니다. `tests/test_dag_gate_regressions.py`와 `tests/test_protocol_regressions.py`가 해당 경계의 증거입니다.
 
 `tests/test_flow.py`: fixture 수직 흐름·사용자 변경 보존·수리 한도·필수 검사 누락·CLI E2E·SQLite interrupt 재시작.

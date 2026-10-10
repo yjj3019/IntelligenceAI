@@ -22,6 +22,10 @@ from .scanner import GitleaksScanner
 from .security import SafetyError, canonical, clean, digest, redact
 
 
+class _InjectedCrash(RuntimeError):
+    """Test-only abrupt process loss: exception cleanup must not run."""
+
+
 class GraphState(TypedDict, total=False):
     task_id: str
     owner_generation: int
@@ -125,7 +129,7 @@ class Controller:
 
     def _crash(self, boundary: str):
         if self.crash_at == boundary:
-            raise RuntimeError("injected crash at " + boundary)
+            raise _InjectedCrash("injected crash at " + boundary)
 
     def _execute(self, state: GraphState) -> dict:
         return dag.execute(self, state)
@@ -284,12 +288,19 @@ class Controller:
         return {}
 
     def run(self, task_id: str) -> dict:
-        from .ownership import TaskLease
+        from .ownership import TaskLease, TaskOwnershipConflict
 
         with TaskLease(self.root, task_id) as lease:
             if not lease.acquired:
-                raise SafetyError("another controller owns this task")
-            return self._run_owned(task_id)
+                raise TaskOwnershipConflict("another controller owns this task")
+            try:
+                return self._run_owned(task_id)
+            except _InjectedCrash:
+                raise
+            except Exception:
+                # Cleanup is performed before releasing ownership, never by an observer.
+                self.ledger.invalidate_candidate(task_id)
+                raise
 
     def _run_owned(self, task_id: str) -> dict:
         task = self.ledger.task(task_id)

@@ -7,6 +7,10 @@ from pathlib import Path
 from .security import SafetyError, digest
 
 
+class TaskOwnershipConflict(SafetyError):
+    """Another controller owns the task; the caller must not mutate its state."""
+
+
 class TaskLease:
     def __init__(self, root: Path, task_id: str):
         directory = root / "owners"
