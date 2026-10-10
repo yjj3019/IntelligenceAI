@@ -1,6 +1,6 @@
 # 웹 GUI 검증 기록
 
-2026-10-10, Windows의 GUI 전용 checkout에서 Python 3.11.15(win-amd64)·Node 24.15.0(x64)로 확인했습니다. 이 기록은 로컬 검증과 실제 운영 연결을 구분합니다. 공개 서버·DB·OIDC 등록은 생성하지 않았으며 유료 모델과 외부 효과를 실행하지 않았습니다.
+2026-10-10, Windows의 GUI 전용 checkout에서 Python 3.11.15(win-amd64)·Node 24.15.0(x64)로 확인했습니다. 이 기록은 로컬 검증과 실제 운영 연결을 구분합니다. 합성 데이터만 포함한 정적 Sites 공개 배포를 완료했습니다. private 서버·DB·OIDC 등록은 생성하지 않았으며 유료 모델과 외부 효과를 실행하지 않았습니다.
 
 | 검사 | 로컬 결과 | 범위 |
 |---|---|---|
@@ -14,7 +14,7 @@
 | 공개 단일 HTML | 생성 | 자체 JS/CSS, hash navigation, CSP connect-src none |
 | 정확한 release blob 비밀 검사 | 0 findings | 공식 SHA256 검증 Gitleaks 8.30.1, 원문 보고서는 보관하지 않음 |
 | 기존 core 로컬 회귀 | 171 passed, 12 skipped | 개발 중 전체 pytest의 core 항목; 후속 웹 검사는 위 결과로 별도 재실행 |
-| 기존 core 8환경 CI + 웹 CI | 9개 job 모두 성공 | [코드 commit db5cdd4 검증](https://github.com/yjj3019/IntelligenceAI/actions/runs/38042753805), Ubuntu/Windows/macOS arm64·Intel × Python 3.11·3.14 |
+| 기존 core 8환경 CI + 웹 CI | 9개 job 모두 성공 | [리뷰 수정 commit 596b127 검증](https://github.com/yjj3019/IntelligenceAI/actions/runs/38045002890), Ubuntu/Windows/macOS arm64·Intel × Python 3.11·3.14 |
 | 실제 임시 PostgreSQL CI | 43 passed | 프로젝트 인가·승인·중복·취소·복구 및 8개 동시 제출·별도 pool 재연결 |
 
 지원되는 전용 Chrome 테스트 탭에서 공개 데모의 모바일 390px, KO/EN 전환, 새로고침·뒤로가기·직접 링크, 키보드 계획 미리보기·메뉴 Escape와 후보 diff를 확인했습니다. 최종 공개 빌드의 8개 모바일 화면에서 document 너비가 viewport를 넘지 않았으며 콘솔 warning/error가 없었습니다. locale 시간대는 실제 브라우저의 Asia/Seoul로 표시되었습니다.
@@ -23,10 +23,14 @@
 
 독립 리뷰 후 추가한 회귀 9개는 수정 전 `eb72aa5` 소스에서 모두 실패했고, 수정 후 기존 16개와 함께 25개가 통과했습니다. 테스트는 실제 모델 성공을 만들지 않는 fetch mock과 합성 검증 evidence를 사용합니다. 승인 의도는 사용자가 준비할 때 한 번 고정하며, 응답 유실 후 재시도와 만료 후 receipt 조회에도 동일 payload와 key를 보냅니다. 새로운 승인은 별도 의도를 준비해야 합니다. 로그아웃·권한회수·다른 사용자 및 경로 전환은 요청 epoch를 갱신해 오래된 응답의 데이터·오류·피드백 적용을 차단합니다.
 
+[실제 공개 Sites URL](https://intelligenceai.violet-pixie-4145.chatgpt.site)에서 지원되는 전용 Chrome으로 KO/EN 각각 8개 화면을 390×844 viewport에서 확인했습니다. 모든 화면의 document 너비가 viewport 이내였고, 읽기 전용 합성 안내·모델 호출 0·승인 비활성·언어 보존·reload·Back/Forward·메뉴 Enter/Escape·문서 링크·private 미연결 안내를 확인했습니다. 테스트 탭의 warning/error는 0개였으며 임시 viewport는 복원했습니다. Sites API의 접근 모드는 `public`, 버전 1의 배포 상태는 `succeeded`입니다.
+
+Cookie·Authorization 없이 일반 HTML User-Agent로 보낸 독립 HTTP 요청도 로그인 리디렉션 없이 200을 반환했습니다. HTML parser의 줄바꿈 정규화 후 애플리케이션 JS·CSS와 CSP가 공개 빌드와 일치했습니다. Sites가 자체 bootstrap script 하나를 추가하므로 전체 응답 바이트가 원본 HTML과 같다고 주장하지 않습니다. 기본 Python User-Agent 요청은 호스팅 측에서 403으로 거부됐습니다.
+
 ## 실제 운영에서 남은 검증
 
 실제 PostgreSQL은 로컬에 제공되지 않았습니다. 별도 CI의 임시 PostgreSQL 17.6에서 웹 계약 43개가 통과했습니다. 8개 동시 요청의 단일 task/job/receipt와 별도 pool 재연결도 포함합니다. 기존 8개 OS·Python core matrix를 유지했고 모든 job이 성공했습니다. 검사에 사용하는 합성 토큰은 런타임에서 구성하며 비밀 검사 정책이나 ignore는 완화하지 않았습니다.
 
 CI의 임시 DB 검증은 운영 DB의 장애 재시작·backup 검증이 아닙니다. 실제 OIDC 등록, HTTPS ingress의 Secure cookie, 운영 권한회수, DB backup/암호화, 프록시·rate limit·접근 로그, 컨테이너와 Linux runner 격리는 확인하지 못했습니다. runner는 구현하지 않은 상태로 실행을 거부합니다.
 
-운영 배포에 필요한 값의 이름과 초기화 순서는 [배포 절차](web-deployment.md)에 있습니다. 사용자 또는 부모 작업이 승인한 공개 Linux 대상·기존 DB/OIDC 정보가 제공된 뒤 실제 배포와 운영 검증을 진행합니다. 공개 합성 데모의 정적 호스팅은 부모 작업과 조정합니다.
+운영 배포에 필요한 값의 이름과 초기화 순서는 [배포 절차](web-deployment.md)에 있습니다. 사용자 또는 부모 작업이 승인한 공개 Linux 대상·기존 DB/OIDC 정보가 제공된 뒤 실제 private 배포와 운영 검증을 진행합니다. 공개 합성 데모의 정적 호스팅은 별도로 완료했습니다.

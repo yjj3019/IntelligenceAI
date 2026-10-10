@@ -14,7 +14,7 @@ The private API uses a separate PostgreSQL ledger and opaque OIDC server session
 
 Read [architecture](docs/web-architecture.md), [API](docs/web-api.md), [security](docs/web-security.md), [deployment](docs/web-deployment.md) and [validation](docs/web-validation.md). Build with the optional web dependencies, then `npm ci --ignore-scripts`, `npm run build` and `npm run build:public` under `web/`. Run `uv run --frozen --extra web python scripts/pack_public_demo.py` from the repository root to create the self-contained `deliverables/public-demo.html`.
 
-A real private rollout needs an approved Linux destination, existing PostgreSQL and OIDC registration, and HTTPS ingress. No real public deployment has been performed without those details. Container recipes are prepared but not runtime-verified.
+The [public introduction and KO/EN synthetic demo](https://intelligenceai.violet-pixie-4145.chatgpt.site) is deployed on Sites. It contains only static HTML, synthetic data and disabled mutations; no login, private API, database or runner is connected. [Deployment identity and source provenance](deploy/public-site.json) are retained for updates. A real private rollout still needs an approved Linux destination, existing PostgreSQL and OIDC registration, and HTTPS ingress. Container recipes are prepared but not runtime-verified.
 
 ## Install and run
 

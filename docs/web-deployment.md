@@ -60,6 +60,14 @@ server는 기본 `127.0.0.1:8080`에서 실행됩니다. 기존 ingress가 HTTPS
 
 Private 콘솔에 작업을 저장해도 `BLOCKED`와 `HELD`로 기록됩니다. API에서 임의 저장소 코드나 vendor CLI를 실행하지 않습니다. 별도 Linux runner와 실제 증거 ingestion은 구현되지 않았으며 paid 모델·게시·push·merge·deploy는 항상 비활성입니다. 배포 정보만 제공해도 이 기능들이 자동 활성화되지는 않습니다.
 
+## 공개 정적 Sites 배포
+
+[공개 소개·데모](https://intelligenceai.violet-pixie-4145.chatgpt.site)는 사용자 승인을 받은 새 Sites 프로젝트 하나에 배포했습니다. 접근 모드는 `public`이며 버전 1의 배포 결과는 `succeeded`입니다. [배포 기록](../deploy/public-site.json)에 project/version/deployment ID와 소스 commit을 보존합니다. 이후 수정에서는 이 project ID를 재사용하고 새 Site를 중복 생성하지 않습니다.
+
+GUI의 공개 빌드를 단일 `dist/index.html`로 복사한 전용 Site checkout을 사용했습니다. 공식 `site-workflow.mjs`의 숨겨진 stdin으로 메모리의 단기 소스 자격 증명을 전달하고, 정확한 소스를 push한 뒤 두 파일만 포함한 archive를 저장·배포했습니다. 자격 증명은 argv·파일·로그에 저장하지 않았으며 Git 작성자는 일반 Sites 이름을 사용했습니다. Windows에서는 이미 설치된 Git Bash를 해당 프로세스의 PATH에 앞세우고 GNU tar의 `TAR_OPTIONS=--force-local`로 드라이브 문자를 로컬 경로로 처리했습니다. 전역 설정, WSL·브라우저 설치, 포트 개방이나 터널은 사용하지 않았습니다.
+
+이 정적 호스팅은 Python API·PostgreSQL·OIDC·Linux 실행기를 대체하지 않습니다. 공개 페이지의 private 링크는 환경 미연결 안내를 표시하며 자격 증명을 받지 않습니다. CSP는 모든 API 연결과 form 제출을 차단합니다. 실제 private 콘솔의 배포는 위 운영 연결 정보가 제공된 후 진행합니다.
+
 ## 독립 로컬 검증
 
 ```sh

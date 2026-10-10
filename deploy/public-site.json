@@ -1,0 +1,16 @@
+{
+  "purpose": "Public introduction and KO/EN synthetic read-only demo",
+  "project_id": "appgprj_6aca13488ae08191b42795c0542cdb2d",
+  "access_mode": "public",
+  "version_id": "appgprj_6aca13488ae08191b42795c0542cdb2d~appgver_cb98787651fc81919465ed2b111db5ae",
+  "version_number": 1,
+  "deployment_id": "appgdep_6aca13f85d508191a49104229809ae13",
+  "deployment_status": "succeeded",
+  "url": "https://intelligenceai.violet-pixie-4145.chatgpt.site",
+  "site_source_commit": "430bd605a0a35c91c79b29fc51b58693e0589214",
+  "gui_source_commit": "596b127cb360b28f4dbf7aa57c5465f47e7a7679",
+  "public_html_sha256": "4e317f69382851027cc84a0f7a9f364131354b4d489cf6d4580b4a1b0b6ec7bf",
+  "private_api_connected": false,
+  "real_model_calls": 0,
+  "site_source_files": [".openai/hosting.json", "dist/index.html"]
+}

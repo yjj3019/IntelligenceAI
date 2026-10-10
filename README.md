@@ -12,6 +12,8 @@ IntelligenceAI는 AI 작업의 실행 상태와 변경 후보, 검사 근거, �
 
 공개 데모에는 실제 작업·로그인이 없습니다. private API는 별도의 PostgreSQL 원장과 OIDC 서버 세션을 사용하고 객체별 프로젝트 권한을 확인합니다. 현재 제출은 HELD 대기에 저장됩니다. Linux runner와 실제 모델·외부 효과는 비활성 상태입니다. 기존 CLI의 로컬 SQLite나 파일 잠금을 HTTP로 노출하지 않습니다.
 
+[공개 소개·KO/EN 데모](https://intelligenceai.violet-pixie-4145.chatgpt.site)를 Sites에 배포했습니다. 합성 데이터만 표시하는 정적 사이트이며 로그인이나 프로젝트 쓰기 API는 없습니다. 배포 ID와 소스는 [공개 배포 기록](deploy/public-site.json)에 보존합니다.
+
 [웹 구조](docs/web-architecture.md) · [API 계약](docs/web-api.md) · [웹 보안](docs/web-security.md) · [배포 절차](docs/web-deployment.md) · [검증 기록](docs/web-validation.md)
 
 ```powershell
