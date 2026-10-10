@@ -41,6 +41,8 @@ MCP 추가 구현: 같은 Controller의 로컬 stdio service, operator repositor
 
 ## 회귀 증거
 
+추가 검토 반영: 승인 gate는 plan의 모든 step/check와 authoritative receipt를 대조합니다. Python·JSON fixture와 정적 검사 전용 DAG를 승인할 수 있고, 누락·추가·중복·stale proof는 기존 승인을 폐기합니다. writer의 선언 검사도 실행하며 임의 test/build는 UNVERIFIED로 차단합니다. admission 중 cancel이 generation을 바꾸면 READY로 덮어쓰지 않습니다. MCP startup recovery는 granted repository에 한정하며 실행 중인 controller의 task lease를 획득할 수 없으면 건드리지 않습니다. `tests/test_dag_gate_regressions.py`와 `tests/test_protocol_regressions.py`가 해당 경계의 증거입니다.
+
 `tests/test_flow.py`: fixture 수직 흐름·사용자 변경 보존·수리 한도·필수 검사 누락·CLI E2E·SQLite interrupt 재시작.
 `tests/test_recovery.py`: 5개 crash 경계·중복 receipt·stale generation·unknown cancel·single writer.
 `tests/test_approvals.py`: bytes/untracked/base/policy/evidence/scope/expiry/destination/argv/reject 변경과 복원 후 승인 재사용 차단.

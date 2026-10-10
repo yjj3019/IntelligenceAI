@@ -142,7 +142,11 @@ def execute(controller, state):
             controller.ledger.step_start(tid, step.step_id, round_number, generation)
             controller._fixture_step(state, step)
             candidate = controller.candidate(tid)
-            status, evidence, findings = inspect_step(step, capture(target, candidate), candidate)
+            status, evidence, findings = (
+                inspect_step(step, capture(target, candidate), candidate)
+                if checks_for(step)
+                else ("SUCCEEDED", [], [])
+            )
             if controller.candidate(tid) != candidate:
                 raise SafetyError("candidate changed during writer checks")
             finish(step, status, evidence, findings)

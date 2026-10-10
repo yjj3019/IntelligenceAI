@@ -22,7 +22,7 @@ from intelligenceai.registry import CAPABILITIES, Capability, authorize_step
 from intelligenceai.security import SafetyError
 
 
-def prepared(tmp_path, executor="omnilane", effort="high"):
+def prepared(tmp_path, executor="omnilane", effort="high", invocation_id="owned-invocation"):
     provider = {
         "omnilane": "codex",
         "mco": "codex",
@@ -32,8 +32,8 @@ def prepared(tmp_path, executor="omnilane", effort="high"):
     }[executor]
     step = Step(
         step_id="review",
-        role="review",
-        mode="read_only",
+        role="implement" if executor == "antigravity" else "review",
+        mode="write" if executor == "antigravity" else "read_only",
         executor=executor,
         provider=provider,
         model="test-model",
@@ -45,7 +45,7 @@ def prepared(tmp_path, executor="omnilane", effort="high"):
         step,
         task_id="task",
         generation=1,
-        invocation_id="owned-invocation",
+        invocation_id=invocation_id,
         request="Review without executing code",
         cwd=tmp_path,
         candidate_digest="a" * 64,
@@ -56,17 +56,20 @@ class FakeExecutable:
     def __init__(self):
         self.operations = []
 
-    def exchange(self, invocation, operation, job_id):
+    def exchange(self, invocation, operation, job_id, *, timeout):
         self.operations.append(operation)
-        if operation != "submit":
-            assert omnilane_command(invocation, operation, job_id)[-1] == job_id
+        argv = (
+            invocation.argv
+            if operation == "submit"
+            else omnilane_command(invocation, operation, job_id)
+        )
         process = subprocess.run(
-            [sys.executable, str(Path(__file__).parent / "support/fake_vendor.py"), operation],
-            input=invocation.model_dump_json(),
+            [sys.executable, str(Path(__file__).parent / "support/fake_vendor.py"), *argv],
+            input=invocation.stdin if operation == "submit" else "",
             text=True,
             capture_output=True,
-            check=True,
-            timeout=10,
+            check=False,
+            timeout=min(10, timeout),
             env={},
             cwd=invocation.cwd,
             shell=False,
@@ -78,7 +81,7 @@ class FakeMCPServer:
     def __init__(self):
         self.calls = []
 
-    def exchange(self, invocation, operation, job_id):
+    def exchange(self, invocation, operation, job_id, *, timeout):
         call = invocation.messages[0]
         self.calls.append(call)
         assert call.tool == "codereview" and call.arguments["use_assistant_model"] is False
@@ -118,10 +121,13 @@ def test_omnilane_complete_fake_executable(protocol_ledger, tmp_path):
     assert invocation.argv[-2:] == ["hard-judgment", "-"] and not invocation.env
     transport = FakeExecutable()
     session = _ProtocolSession(protocol_ledger, transport, StubScanner(live=True))
-    assert session.submit(invocation)["native_job_id"] == "fixture-job"
+    assert session.submit(invocation)["native_job_id"] == "20261010-060000-123-1"
     assert session.poll(invocation)["state"] == "done"
     result = session.collect(invocation)
-    assert result["answer"] is None and result["model_verification"] == "UNVERIFIED"
+    assert (
+        result["answer"] == "Owned opaque answer\n" and result["model_verification"] == "UNVERIFIED"
+    )
+    assert transport.operations.count("result") == transport.operations.count("answer") == 1
     assert session.collect(invocation) == result
     session.submit(invocation)
     assert transport.operations.count("submit") == 1

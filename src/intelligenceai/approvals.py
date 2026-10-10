@@ -33,6 +33,8 @@ def ready(task: dict, result: dict, ledger: Ledger):
     validate_executable_plan(plan)
     candidate = Candidate.model_validate(result["candidate"])
     evidence = [Evidence.model_validate(e) for e in result["evidence"]]
+    if any(not e.live for e in evidence if e.command_profile.endswith("gitleaks-v1")):
+        raise SafetyError("fixture scanner evidence cannot authorize external actions")
     expected = Counter(
         (profile, None, None, "gitleaks-8.30.1")
         for profile in ("outbound-gitleaks-v1", "candidate-gitleaks-v1")
@@ -103,9 +105,6 @@ def ready(task: dict, result: dict, ledger: Ledger):
         for f in findings
     ):
         raise SafetyError("blocking findings unresolved")
-    # A scanner stub cannot authorize external actions.
-    if any(not e.live for e in evidence if e.command_profile.endswith("gitleaks-v1")):
-        raise SafetyError("fixture scanner evidence cannot authorize external actions")
 
 
 def decide(
@@ -178,4 +177,6 @@ def require_ready(task: dict, result: dict, ledger: Ledger):
         ready(task, result, ledger)
     except Exception as exc:
         ledger.invalidate_candidate(task["id"])
+        if isinstance(exc, SafetyError):
+            raise
         raise SafetyError("required approval proof invalid; previous approval revoked") from exc

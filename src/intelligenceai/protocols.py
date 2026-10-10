@@ -6,6 +6,7 @@ Public CLI/controller/MCP never construct it. LiveGateway has no enable flag.
 
 import json
 import re
+import subprocess
 import time
 from pathlib import Path
 from typing import Literal, Protocol
@@ -15,7 +16,7 @@ from pydantic import Field, model_validator
 from .adapter_contracts import parse_agy_json, validate_stream
 from .contracts import Contract, Step
 from .ledger import Ledger
-from .security import SafetyError, canonical, clean, redact
+from .security import SafetyError, canonical, clean, digest, redact
 
 
 class MCPCall(Contract):
@@ -182,8 +183,12 @@ def prepare(
                 step.model,
                 "--output-format",
                 "json",
+                "--approval-mode",
+                "plan" if step.mode == "read_only" else "auto_edit",
             ]
         else:
+            if step.mode != "write":
+                raise SafetyError("Antigravity read-only headless permission contract unverified")
             if step.effort not in {None, "low", "medium", "high"}:
                 raise SafetyError("Antigravity effort value unverified")
             version = "agy-headless-doc-2026-10-10"
@@ -224,11 +229,19 @@ def prepare(
 
 
 def omnilane_command(prepared: PreparedInvocation, operation: str, job_id: str) -> list[str]:
-    if prepared.executor != "omnilane" or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", job_id):
+    if prepared.executor != "omnilane" or not re.fullmatch(
+        r"[0-9]{8}-[0-9]{6}-[0-9]+-[0-9]+", job_id
+    ):
         raise SafetyError("unsafe or wrong native job handle")
-    if operation not in {"status", "result", "cancel"}:
+    if operation not in {"status", "result", "answer", "cancel"}:
         raise SafetyError("unsupported job operation")
-    return ["omnilane", "jobs", *([] if operation == "cancel" else ["--json"]), operation, job_id]
+    return [
+        "omnilane",
+        "jobs",
+        *([] if operation in {"answer", "cancel"} else ["--json"]),
+        "result" if operation == "answer" else operation,
+        job_id,
+    ]
 
 
 def parse_omnilane(payload: str, job_id: str, operation: str) -> dict:
@@ -364,7 +377,7 @@ class TransportReply(Contract):
 
 class _Transport(Protocol):
     def exchange(
-        self, prepared: PreparedInvocation, operation: str, job_id: str | None
+        self, prepared: PreparedInvocation, operation: str, job_id: str | None, *, timeout: float
     ) -> TransportReply: ...
 
 
@@ -378,6 +391,36 @@ class _ProtocolSession:
             scanner,
             crash_at,
         )
+        self.ledger.db.execute(
+            "CREATE TABLE IF NOT EXISTS protocol_operations "
+            "(id TEXT PRIMARY KEY, task_id TEXT NOT NULL, invocation_id TEXT NOT NULL, "
+            "generation INTEGER NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL, receipt TEXT)"
+        )
+
+    def _uncertain(self, prepared):
+        task = self.ledger.task(prepared.task_id)
+        if task["generation"] == prepared.generation and task["state"] != "NEEDS_RECONCILIATION":
+            self.ledger.reconcile(prepared.task_id)
+
+    def _remaining(self, prepared):
+        task = self.ledger.task(prepared.task_id)
+        if task["generation"] != prepared.generation or task["state"] not in {"READY", "RUNNING"}:
+            raise SafetyError("stale or cancelled protocol operation")
+        remaining = prepared.deadline - time.time()
+        if remaining <= 0:
+            self._uncertain(prepared)
+            raise SafetyError("whole invocation deadline expired; no new transport call")
+        return remaining
+
+    def _exchange(self, prepared, operation, job_id):
+        remaining = self._remaining(prepared)
+        try:
+            reply = self.transport.exchange(prepared, operation, job_id, timeout=remaining)
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            self._uncertain(prepared)
+            raise SafetyError("transport deadline; termination remains unverified") from exc
+        self._remaining(prepared)  # A late reply cannot become a successful receipt.
+        return reply
 
     def submit(self, prepared: PreparedInvocation) -> dict:
         prepared = PreparedInvocation.model_validate(prepared.model_dump())
@@ -404,9 +447,14 @@ class _ProtocolSession:
                 if old["data"] != canonical(prepared.model_dump()):
                     raise SafetyError("conflicting protocol invocation identity")
                 return dict(old)
-            count = self.ledger.db.execute(
-                "SELECT count(*) FROM invocations WHERE task_id=?", (prepared.task_id,)
-            ).fetchone()[0]
+            count = (
+                self.ledger.db.execute(
+                    "SELECT count(*) FROM invocations WHERE task_id=?", (prepared.task_id,)
+                ).fetchone()[0]
+                + self.ledger.db.execute(
+                    "SELECT count(*) FROM protocol_operations WHERE task_id=?", (prepared.task_id,)
+                ).fetchone()[0]
+            )
             if count >= task["data"]["budgets"]["max_model_calls"]:
                 raise SafetyError("shared call budget exhausted")
             active = self.ledger.db.execute(
@@ -431,17 +479,32 @@ class _ProtocolSession:
             )
         if self.crash_at == "starting":
             raise RuntimeError("injected starting crash")
-        reply = self.transport.exchange(prepared, "submit", None)
+        reply = self._exchange(prepared, "submit", None)
         if self.crash_at == "submitted":
             raise RuntimeError("injected effect before receipt crash")
         if prepared.executor == "omnilane":
+            if reply.exit_code != 0:
+                self._uncertain(prepared)
+                raise SafetyError("Omnilane route failed; no successful handle receipt")
             handle = reply.stdout.strip()
             omnilane_command(prepared, "status", handle)
             receipt = {"native_job_id": handle, "status": "RUNNING"}
         elif prepared.executor == "mco":
             receipt = parse_mco(reply.exit_code, reply.stdout)
+            selectors = [
+                (o["invocation_id"], o["provider"], o["model"]) for o in receipt["outputs"]
+            ]
+            if selectors != [("review", prepared.provider, prepared.model)]:
+                self._uncertain(prepared)
+                raise SafetyError("MCO reported selector differs from requested agent")
+            receipt["selector_verification"] = "MATCHED_UPSTREAM_REPORT_ONLY"
         elif prepared.executor == "pal":
+            if reply.exit_code != 0:
+                self._uncertain(prepared)
+                raise SafetyError("PAL initial call failed")
             receipt = _object(reply.stdout)
+            pal_continue(prepared, receipt, "")  # Validate the durable continuation handle.
+            receipt["analysis_scope"] = "INTERNAL_WORKFLOW_NO_EXTERNAL_EXPERT"
         else:
             receipt = parse_google(prepared.executor, reply.exit_code, reply.stdout)
         terminal = "SUCCEEDED"
@@ -483,6 +546,7 @@ class _ProtocolSession:
                 )
 
     def poll(self, prepared):
+        self._remaining(prepared)
         row = self.ledger.db.execute(
             "SELECT * FROM invocations WHERE id=?", (prepared.invocation_id,)
         ).fetchone()
@@ -493,7 +557,10 @@ class _ProtocolSession:
         receipt = json.loads(row["receipt"])
         if prepared.executor == "omnilane" and row["status"] == "RUNNING":
             job_id = receipt["native_job_id"]
-            reply = self.transport.exchange(prepared, "status", job_id)
+            reply = self._exchange(prepared, "status", job_id)
+            if reply.exit_code != 0:
+                self._uncertain(prepared)
+                raise SafetyError("Omnilane status command failed")
             receipt = parse_omnilane(reply.stdout, job_id, "status") | {"native_job_id": job_id}
             self._receipt(prepared, receipt, "RUNNING")
         return receipt
@@ -505,15 +572,55 @@ class _ProtocolSession:
         if receipt.get("collected"):
             return receipt
         job_id = receipt["native_job_id"]
-        reply = self.transport.exchange(prepared, "result", job_id)
+        reply = self._exchange(prepared, "result", job_id)
+        if reply.exit_code != 0:
+            self._uncertain(prepared)
+            raise SafetyError("Omnilane result metadata command failed")
         result = parse_omnilane(reply.stdout, job_id, "result")
-        if result["state"] != "done" or result.get("exit_code") != 0:
+        if (
+            result["state"] != "done"
+            or result.get("exit_code") != 0
+            or result.get("output_available") is not True
+        ):
             raise SafetyError("native result not successful; answer metadata is not evidence")
-        result |= {"native_job_id": job_id, "collected": True}
+        answer = self._exchange(prepared, "answer", job_id)
+        if answer.exit_code != 0 or not answer.stdout.strip():
+            self._uncertain(prepared)
+            raise SafetyError("native answer collection failed or empty")
+        result |= {
+            "native_job_id": job_id,
+            "collected": True,
+            "answer": redact(answer.stdout),
+            "answer_verification": "OPAQUE_UPSTREAM_OUTPUT_ONLY",
+        }
         self._receipt(prepared, result, "SUCCEEDED")
         return result
 
     def advance(self, prepared, findings: str):
+        self._remaining(prepared)
+        if prepared.executor != "pal":
+            raise SafetyError("only PAL has a continuation operation")
+        parent = self.ledger.db.execute(
+            "SELECT * FROM invocations WHERE id=?", (prepared.invocation_id,)
+        ).fetchone()
+        if not parent or parent["data"] != canonical(prepared.model_dump()):
+            raise SafetyError("no matching durable PAL invocation")
+        operation_id = digest(
+            ["pal-step", prepared.invocation_id, prepared.generation, prepared.candidate_digest, 2]
+        )
+        old = self.ledger.db.execute(
+            "SELECT * FROM protocol_operations WHERE id=?", (operation_id,)
+        ).fetchone()
+        if old:
+            saved = PreparedInvocation.model_validate_json(old["data"])
+            if saved.messages[0].arguments["findings"] != redact(findings):
+                raise SafetyError("conflicting PAL continuation operation")
+            if old["status"] != "SUCCEEDED":
+                self._uncertain(prepared)
+                raise SafetyError("PAL continuation started without receipt; replay refused")
+            value = json.loads(old["receipt"])
+            self._receipt(prepared, value, "SUCCEEDED")
+            return value
         receipt = self.poll(prepared)
         continuation = pal_continue(prepared, receipt, findings)
         evidence = self.scanner.scan(
@@ -523,7 +630,39 @@ class _ProtocolSession:
         )
         if evidence.status != "PASS" or not evidence.live:
             raise SafetyError("PAL continuation input scan required")
-        reply = self.transport.exchange(continuation, "continue", receipt["continuation_id"])
+        self._remaining(prepared)
+        with self.ledger.transaction():
+            if self.ledger.task(prepared.task_id)["generation"] != prepared.generation:
+                raise SafetyError("stale PAL continuation reservation")
+            count = (
+                self.ledger.db.execute(
+                    "SELECT count(*) FROM invocations WHERE task_id=?", (prepared.task_id,)
+                ).fetchone()[0]
+                + self.ledger.db.execute(
+                    "SELECT count(*) FROM protocol_operations WHERE task_id=?", (prepared.task_id,)
+                ).fetchone()[0]
+            )
+            if count >= self.ledger.task(prepared.task_id)["data"]["budgets"]["max_model_calls"]:
+                raise SafetyError("shared PAL phase call budget exhausted")
+            try:
+                self.ledger.db.execute(
+                    "INSERT INTO protocol_operations VALUES(?,?,?,?,?,?,NULL)",
+                    (
+                        operation_id,
+                        prepared.task_id,
+                        prepared.invocation_id,
+                        prepared.generation,
+                        "STARTING",
+                        canonical(continuation.model_dump()),
+                    ),
+                )
+            except Exception as exc:
+                raise SafetyError("PAL phase already reserved; no duplicate transport") from exc
+        if self.crash_at == "pal_starting":
+            raise RuntimeError("injected PAL phase start crash")
+        reply = self._exchange(continuation, "continue", receipt["continuation_id"])
+        if self.crash_at == "pal_continued":
+            raise RuntimeError("injected PAL continuation effect before receipt crash")
         value = _object(reply.stdout)
         if (
             reply.exit_code != 0
@@ -531,12 +670,23 @@ class _ProtocolSession:
             or value.get("continuation_id") != receipt["continuation_id"]
         ):
             raise SafetyError("PAL continuation completion unverified")
+        value = clean(value | {"analysis_scope": "INTERNAL_WORKFLOW_NO_EXTERNAL_EXPERT"})
+        with self.ledger.transaction():
+            if self.ledger.task(prepared.task_id)["generation"] != prepared.generation:
+                raise SafetyError("stale PAL phase receipt")
+            self.ledger.db.execute(
+                "UPDATE protocol_operations SET status='SUCCEEDED',receipt=? "
+                "WHERE id=? AND status='STARTING'",
+                (canonical(value), operation_id),
+            )
+        if self.crash_at == "pal_receipt":
+            raise RuntimeError("injected PAL phase receipt before parent receipt crash")
         self._receipt(prepared, value, "SUCCEEDED")
         return clean(value)
 
     def cancel(self, prepared):
         receipt = self.poll(prepared)
-        reply = self.transport.exchange(prepared, "cancel", receipt.get("native_job_id"))
+        reply = self._exchange(prepared, "cancel", receipt.get("native_job_id"))
         # A native cancel rc0 never proves process-tree termination.
         self.ledger.cancel(prepared.task_id)
         return {
@@ -546,5 +696,28 @@ class _ProtocolSession:
         }
 
     def reconcile(self, prepared):
-        self.ledger.reconcile(prepared.task_id)
+        self._remaining(prepared)
+        row = self.ledger.db.execute(
+            "SELECT * FROM invocations WHERE id=?", (prepared.invocation_id,)
+        ).fetchone()
+        if not row or row["data"] != canonical(prepared.model_dump()):
+            raise SafetyError("no matching protocol reconciliation record")
+        if row["status"] == "RUNNING" and row["receipt"]:
+            if prepared.executor == "omnilane":
+                # Read-only status lookup is permitted with an exact durable native handle;
+                # never repeat route or launch a new worker during reconciliation.
+                receipt = self.poll(prepared)
+                if receipt.get("state") in {"dead", "cancelled", "expired"}:
+                    self._uncertain(prepared)
+                return self.ledger.task(prepared.task_id)["state"]
+            if prepared.executor == "pal":
+                unknown = self.ledger.db.execute(
+                    "SELECT 1 FROM protocol_operations WHERE invocation_id=? AND status='STARTING'",
+                    (prepared.invocation_id,),
+                ).fetchone()
+                if not unknown:
+                    # A completed first phase is a continuation receipt, not an active call.
+                    return self.ledger.task(prepared.task_id)["state"]
+        if row["status"] in {"STARTING", "RUNNING"}:
+            self._uncertain(prepared)
         return self.ledger.task(prepared.task_id)["state"]
