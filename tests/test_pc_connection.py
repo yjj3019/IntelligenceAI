@@ -235,7 +235,7 @@ def test_start_is_single_use_and_results_are_reports_and_idempotent(fixture, tmp
     assert machine(f, "start", bound).status_code == 200
     assert machine(f, "start", bound).status_code == 409
     assert machine(f, "heartbeat", bound).json() == {"continue": True}
-    value = report(bound, text="Synthetic result api_key=IAI_SYNTHETIC_SECRET_OUTPUT")
+    value = report(bound, text="Synthetic result api_key=IAI_SYNTHETIC_SECRET_OUTPUT " + TOKEN)
     first = machine(f, "result", value)
     assert first.status_code == 200, first.text
     assert first.json()["source"] == "USER_DEVICE_REPORT"
@@ -252,6 +252,7 @@ def test_start_is_single_use_and_results_are_reports_and_idempotent(fixture, tmp
             select(artifacts.c.content).where(artifacts.c.kind == "cli-result")
         ).scalar_one()
         assert "[REDACTED]" in content and "IAI_SYNTHETIC_SECRET_OUTPUT" not in content
+        assert TOKEN not in content
     assert runtime.calls == 0
     f["sign_in"](f["bob"])
     assert f["client"].get(path).status_code == 404

@@ -512,7 +512,8 @@ class PCs:
                     raise Problem(409, "pc_cancel_receipt_required")
             closed = data.cleanup_reported and data.outcome != "UNKNOWN"
             completed = closed and not cancelled and data.outcome == "COMPLETED"
-            text = clean(data.text) if completed else None
+            # Opaque device capabilities have no vendor prefix for the common scanner.
+            text = clean(data.text.replace(token, "[REDACTED]")) if completed else None
             if text:
                 conn.execute(
                     insert(artifacts).values(
