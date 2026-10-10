@@ -457,13 +457,13 @@ class ApprovedFixtureRunner:
     def run_claim(self, claim):
         proc = None
         descriptor = None
+        owns_start = False
         try:
             # Commit one-time consumption before launching. Retrying this method cannot replay it.
             with self.db.begin() as conn:
-                _, _, job, row = self.locked(conn, claim)
+                _, _, job, row = self.locked(conn, claim, authority=False)
                 if row["state"] != "CLAIMED":
                     raise Problem(409, "vendor_start_intent_consumed")
-                descriptor = self.descriptor(conn, claim, row)
                 conn.execute(
                     update(vendor_invocations)
                     .where(vendor_invocations.c.id == claim.invocation_id)
@@ -475,7 +475,11 @@ class ApprovedFixtureRunner:
                 conn.execute(
                     update(tasks).where(tasks.c.id == claim.task_id).values(state="VENDOR_RUNNING")
                 )
+            owns_start = True
             self.crash("starting")
+            with self.db.begin() as conn:
+                _, _, _, row = self.locked(conn, claim)
+                descriptor = self.descriptor(conn, claim, row)
             (self.root / claim.invocation_id).mkdir(exist_ok=True)
             if (
                 self.file_digest(self.vendor_source) != self.vendor_digest
@@ -528,6 +532,8 @@ class ApprovedFixtureRunner:
             self.crash("receipt")
             return self.finish(claim, result)
         except (Problem, SafetyError, OSError, ValueError, subprocess.TimeoutExpired):
+            if not owns_start:
+                raise
             if proc is not None or not self.never_started(claim):
                 self.uncertain(claim)
             raise Problem(409, "fixture_vendor_result_unavailable") from None

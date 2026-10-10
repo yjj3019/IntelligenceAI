@@ -415,6 +415,7 @@ function WorkspaceApp() {
   const [confirm, setConfirm] = useState<{
     projectId: string;
     taskId: string;
+    generation: number;
     title: string;
     userId: string;
     routeKey: string;
@@ -744,14 +745,16 @@ function WorkspaceApp() {
     revision,
   ]);
 
-  function keyFor(operation: string, payload: unknown) {
-    const fingerprint =
-      session?.user.id +
-      ":" +
-      project?.id +
-      ":" +
-      operation +
-      JSON.stringify(payload);
+  function fingerprintFor(operation: string, payload: unknown) {
+    return JSON.stringify([
+      session?.user.id,
+      project?.id,
+      operation,
+      operation.startsWith("tasks/") ? task?.generation : null,
+      payload,
+    ]);
+  }
+  function keyFor(fingerprint: string) {
     if (!requestKeys.current.has(fingerprint))
       requestKeys.current.set(fingerprint, crypto.randomUUID());
     return requestKeys.current.get(fingerprint)!;
@@ -771,6 +774,7 @@ function WorkspaceApp() {
     )
       return;
     const epoch = requestEpoch.current;
+    const fingerprint = fingerprintFor(operation, payload);
     pending.current = true;
     setBusy(true);
     setError("");
@@ -779,7 +783,7 @@ function WorkspaceApp() {
       const result = await mutation<{ id?: string; state?: string }>(
         `/projects/${encodeURIComponent(project.id)}/${operation}`,
         session.csrf,
-        explicitKey || keyFor(operation, payload),
+        explicitKey || keyFor(fingerprint),
         payload,
         method,
       );
@@ -791,14 +795,7 @@ function WorkspaceApp() {
             : intent,
         );
       // Preserve uncertain retries, then release the key after a confirmed response.
-      requestKeys.current.delete(
-        session.user.id +
-          ":" +
-          project.id +
-          ":" +
-          operation +
-          JSON.stringify(payload),
-      );
+      requestKeys.current.delete(fingerprint);
       setFeedback(
         result.state === "CANCEL_REQUESTED"
           ? "Cancellation requested. Termination has not been confirmed."
@@ -1756,6 +1753,7 @@ function WorkspaceApp() {
                               setConfirm({
                                 projectId: project.id,
                                 taskId: task.id,
+                                generation: task.generation,
                                 title: task.title,
                                 userId: session.user.id,
                                 routeKey: routeIdentity(),
@@ -2386,6 +2384,7 @@ function WorkspaceApp() {
                   target.epoch !== requestEpoch.current ||
                   target.routeKey !== routeIdentity() ||
                   target.taskId !== task?.id ||
+                  target.generation !== task?.generation ||
                   target.projectId !== project?.id ||
                   target.userId !== session?.user.id
                 )

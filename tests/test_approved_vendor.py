@@ -5,7 +5,7 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from threading import Barrier
+from threading import Barrier, Event
 from types import SimpleNamespace
 
 import pytest
@@ -194,6 +194,110 @@ def test_actual_fake_vendor_executes_once_and_stores_private_result(fixture, tmp
         f["service"].task(f["bob"], f["project"], tid)
     assert error.value.status == 404
     assert all(name not in json.dumps(detail) for name in ("session_hash", "lease_token", "argv"))
+
+
+@pytest.mark.parametrize("boundary", ["STARTING", "EXECUTING"])
+def test_duplicate_run_claim_cannot_change_first_call_state_or_lease(
+    fixture, tmp_path, monkeypatch, boundary
+):
+    f = fixture
+    tid, invocation_id, _ = reserved(f)
+    runner = ApprovedFixtureRunner(f["db"], tmp_path / "vendor")
+    claim = runner.claim()
+    paused, resume = Event(), Event()
+    spawned = []
+    original_popen = vendor_runner.subprocess.Popen
+    original_completion = runner.completion
+
+    def popen(*args, **kwargs):
+        child = original_popen(*args, **kwargs)
+        spawned.append(child.pid)
+        return child
+
+    def pause():
+        paused.set()
+        assert resume.wait(timeout=15), "test did not release its owned invocation"
+
+    def starting(name):
+        if boundary == "STARTING" and name == "starting":
+            pause()
+
+    def completion(*args):
+        if boundary == "EXECUTING":
+            pause()
+        return original_completion(*args)
+
+    def snapshot():
+        with f["db"].connect() as conn:
+            return [
+                dict(conn.execute(select(table)).mappings().one())
+                for table in (vendor_invocations, jobs, tasks)
+            ]
+
+    monkeypatch.setattr(vendor_runner.subprocess, "Popen", popen)
+    monkeypatch.setattr(runner, "crash", starting)
+    monkeypatch.setattr(runner, "completion", completion)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        first = pool.submit(runner.run_claim, claim)
+        try:
+            assert paused.wait(timeout=15)
+            before = snapshot()
+            assert before[0]["state"] == boundary
+            with pytest.raises(Problem) as rejected:
+                runner.run_claim(claim)
+            assert rejected.value.status == 409
+            assert snapshot() == before
+        finally:
+            resume.set()
+        assert first.result(timeout=15) == "FIXTURE_COMPLETED"
+    assert len(spawned) == 1
+    assert len(list(runner.root.glob("*/started.json"))) == 1
+    assert f["service"].task(f["alice"], f["project"], tid)["vendor_runs"][0]["id"] == invocation_id
+
+
+def test_lost_ack_recovery_uses_new_generation_vendor_and_cancel_intents(fixture, tmp_path):
+    f = fixture
+    tid, first_invocation, vendor_headers = reserved(f)
+    path = f["base"] + f"/tasks/{tid}"
+    cancel_headers = {**vendor_headers, "Idempotency-Key": uid()}
+    # The server commits these first-generation requests even when a client loses the reply.
+    first_cancel = f["client"].post(path + "/cancel", json={}, headers=cancel_headers)
+    assert first_cancel.json()["state"] == "CANCELLED"
+    assert f["client"].get(path).json()["state"] == "CANCELLED"
+    assert (
+        f["client"].post(path + "/cancel", json={}, headers=cancel_headers).json()
+        == first_cancel.json()
+    )
+    recovered = f["client"].post(
+        path + "/recover", json={}, headers={**vendor_headers, "Idempotency-Key": uid()}
+    )
+    assert recovered.json()["generation"] == 2
+    assert (
+        f["client"]
+        .post(path + "/run-fixture", json={}, headers={**vendor_headers, "Idempotency-Key": uid()})
+        .json()["state"]
+        == "QUEUED"
+    )
+    assert Runner(f["db"], tmp_path / "core").run_once() == "READY_FOR_APPROVAL"
+    old_vendor = f["client"].post(path + "/run-approved-fixture", json={}, headers=vendor_headers)
+    assert old_vendor.json()["invocation_id"] == first_invocation
+    assert f["client"].get(path).json()["state"] == "READY_FOR_APPROVAL"
+    second, second_headers = approve_and_reserve(f, tid, vendor_headers)
+    assert second_headers["Idempotency-Key"] != vendor_headers["Idempotency-Key"]
+    assert second["invocation_id"] != first_invocation
+    assert ApprovedFixtureRunner(f["db"], tmp_path / "vendor").run_once() == "FIXTURE_COMPLETED"
+    old_cancel = f["client"].post(path + "/cancel", json={}, headers=cancel_headers)
+    assert old_cancel.json() == first_cancel.json()
+    assert f["client"].get(path).json()["state"] == "FIXTURE_COMPLETED"
+    assert (
+        f["client"]
+        .post(path + "/cancel", json={}, headers={**cancel_headers, "Idempotency-Key": uid()})
+        .json()["state"]
+        == "CANCELLED"
+    )
+    current = f["client"].get(path).json()
+    assert current["generation"] == 2 and current["state"] == "CANCELLED"
+    assert {run["generation"] for run in current["vendor_runs"]} == {1, 2}
 
 
 @pytest.mark.parametrize("profile", ["python-review", "json-review"])

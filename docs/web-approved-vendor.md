@@ -20,10 +20,19 @@ RESERVED, a server-only session hash, approval actor and frozen binding, then
 VENDOR_QUEUED task/job state. Same-key retries return the original receipt;
 different keys cannot reserve another invocation. GET/Refresh/SSE cannot execute.
 
+The console binds each task mutation intent/key to the selected generation.
+Uncertain retries in that generation preserve the key; explicit recovery creates
+new generation-specific execution and cancellation intents. Historical server
+receipts remain replayable and cannot represent a new generation's action.
+
 The separate runner locks project, task, job and invocation, fences ownership,
 and commits STARTING before launch. Immediately before Popen it holds project
 and session locks and rechecks all current authority, cancellation, generation,
 lease, executable/source pins and remaining deadline in `(0, 300]` seconds.
+
+Only the call that atomically consumes CLAIMED into STARTING owns start cleanup.
+Concurrent/repeated calls with the same claim return 409 without changing state,
+leases or receipts. Their failure cannot terminate or reconcile the owning call.
 A monotonic deadline also limits clock rollback. Approval, session, grant and
 300-second bounds all apply. It never replays a consumed STARTING intent.
 
