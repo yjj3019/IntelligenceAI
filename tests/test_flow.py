@@ -86,7 +86,13 @@ def test_reject_and_cancel_no_launch(controller, repo):
     assert not controller.status(task)["invocations"]
 
 
-def test_cli_offline_e2e(repo, tmp_path, capsys):
+def test_cli_offline_e2e(repo, tmp_path, capsys, monkeypatch):
+    import shutil
+
+    original = shutil.which
+    monkeypatch.setattr(
+        shutil, "which", lambda name: None if name == "gitleaks" else original(name)
+    )
     root = str(tmp_path / "cli-state")
     assert (
         main(["--state-dir", root, "submit", "--repo", str(repo), "--request", "fixture", "--run"])

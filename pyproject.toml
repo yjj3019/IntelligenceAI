@@ -12,7 +12,7 @@ license = "MIT"
 dependencies = ["langgraph==1.2.14", "langgraph-checkpoint-sqlite==3.1.0", "pydantic==2.12.3"]
 
 [project.optional-dependencies]
-dev = ["pytest==8.4.2", "ruff==0.14.0"]
+dev = ["pytest==8.4.2", "ruff==0.14.0", "hatchling==1.27.0"]
 
 [project.scripts]
 intelligenceai = "intelligenceai.cli:main"

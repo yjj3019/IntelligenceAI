@@ -9,7 +9,7 @@ Application code is original IntelligenceAI code under MIT. No upstream source r
 | Pydantic | 2.12.3 | [PyPI](https://pypi.org/project/pydantic/2.12.3/) | MIT | Installed |
 | pytest | 8.4.2 | [PyPI](https://pypi.org/project/pytest/8.4.2/) | MIT | Development |
 | Ruff | 0.14.0 | [PyPI](https://pypi.org/project/ruff/0.14.0/) | MIT | Development |
-| Hatchling | 1.27.0 | [PyPI](https://pypi.org/project/hatchling/1.27.0/) | MIT | Isolated build backend |
+| Hatchling | 1.27.0 | [PyPI](https://pypi.org/project/hatchling/1.27.0/) | MIT | Locked development/build backend |
 | Omnilane | v0.53.0 | [release](https://github.com/Seraphim0916/omnilane/releases/tag/v0.53.0), SHA `15d5c99b1de982651af1b5cb00d339319d965661` | MIT | Contract research only; exact intended upstream unresolved |
 | MCO | v0.12.1 | [release](https://github.com/mco-org/mco/releases/tag/v0.12.1), SHA `3cfce130362dbcc2aedda6170d1a31e39cf67d3e` | MIT | Contract research only |
 | PAL | v9.8.2 | [release](https://github.com/BeehiveInnovations/pal-mcp-server/releases/tag/v9.8.2), SHA `fa78edca0b6bc04ab00ddf5694d855f1b946b87d` | Apache-2.0 | Contract research only |

@@ -3,6 +3,8 @@ import shutil
 
 import pytest
 
+from intelligenceai.contracts import Action
+from intelligenceai.controller import Controller
 from intelligenceai.scanner import GitleaksScanner
 
 
@@ -29,3 +31,20 @@ def test_windows_scanner_remains_unverified():
     if os.name == "posix":
         pytest.skip("Windows runtime boundary")
     assert GitleaksScanner().scan([b"clean"], "candidate", "test").status == "UNVERIFIED"
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not shutil.which("gitleaks"),
+    reason="Pinned Linux scanner required; no paid vendor calls",
+)
+def test_live_scanner_fixture_approval_still_dry_run(repo, tmp_path):
+    controller = Controller(tmp_path / "live-scan-state")
+    try:
+        task = controller.submit(repo, "trusted local fixture")
+        assert controller.run(task)["state"] == "READY_FOR_APPROVAL"
+        action = Action(kind="push", destination="example.invalid/repo", argv=["push", "fixture"])
+        controller.approve(task, action, "local-operator")
+        assert controller.status(task)["state"] == "COMPLETED"
+        assert controller.dry_run(task, action)["external_action_count"] == 0
+    finally:
+        controller.close()

@@ -48,6 +48,12 @@
     "source": "https://pypi.org/project/h11/0.16.0/"
   },
   {
+    "name": "hatchling",
+    "version": "1.27.0",
+    "license": "MIT",
+    "source": "https://pypi.org/project/hatchling/1.27.0/"
+  },
+  {
     "name": "httpcore",
     "version": "1.0.9",
     "license": "BSD-3-Clause",
@@ -162,6 +168,12 @@
     "source": "https://pypi.org/project/packaging/26.3/"
   },
   {
+    "name": "pathspec",
+    "version": "1.1.1",
+    "license": "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "source": "https://pypi.org/project/pathspec/1.1.1/"
+  },
+  {
     "name": "pluggy",
     "version": "1.6.0",
     "license": "MIT",
@@ -232,6 +244,12 @@
     "version": "9.2.1",
     "license": "Apache-2.0",
     "source": "https://pypi.org/project/tenacity/9.2.1/"
+  },
+  {
+    "name": "trove-classifiers",
+    "version": "2026.9.21.13",
+    "license": "License :: OSI Approved :: Apache Software License",
+    "source": "https://pypi.org/project/trove-classifiers/2026.9.21.13/"
   },
   {
     "name": "truststore",
