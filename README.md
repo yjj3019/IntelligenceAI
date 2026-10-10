@@ -2,6 +2,8 @@
 
 Provider 격리 후속 구현으로 [내부 실행 계약과 Linux 오프라인 probe](docs/provider-isolation.ko.md)를 추가했습니다. 연결 화면에서 OS·provider·실행 모드별 차단 사유를 확인할 수 있습니다. 실제 provider·유료 모델은 계속 비활성화하며 오프라인 격리 검사를 실제 모델 실행 성공으로 계산하지 않습니다.
 
+[실제 모델 실행 권한의 서명 계약](docs/live-authority-ko.md)은 승인과 manifest에 결합된 증거 6개의 서명·역할·만료를 검증합니다. 정상 증거도 서명 검증 결과만 반환하며 실행은 `BLOCKED`, 모델은 `NOTRUN`을 유지합니다. 실제 broker·egress·자원·비용 통제와 일회성 실행 예약은 후속 구현·운영 검증이 필요합니다.
+
 [English guide](README.en.md) · [구조와 상태](docs/architecture.md) · [보안 한계](SECURITY.md) · [설계 대조표](docs/requirements.md)
 
 IntelligenceAI는 AI 작업의 실행 상태와 변경 후보, 검사 근거, 승인을 연결하는 로컬 제어 프로젝트입니다. LangGraph가 작업 흐름을 저장하고 별도 SQLite 실행 원장이 실제 호출의 시작·결과를 기록합니다. Git 작업 공간과 후보 digest를 사용해 사용자 변경을 보존하고, 확인한 후보에 대해서만 승인을 판단합니다.

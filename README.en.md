@@ -2,6 +2,8 @@
 
 [Provider isolation contracts and an offline Linux probe](docs/provider-isolation.md) now separate manifest preparation, OS evidence and live authorization. The connections view shows per-provider/mode blockers. Paid models remain disabled; offline probe evidence cannot authorize or attest a live model.
 
+[Live authority receipt contracts](docs/live-authority.md) verify six role-specific signatures bound to an approval and exact manifest. Even valid receipts return signature evidence only, execution `BLOCKED` and model `NOTRUN`. Actual broker, egress, resource/billing enforcement and one-time invocation reservation still require implementation and operational verification.
+
 [한국어](README.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Design coverage](docs/requirements.md)
 
 IntelligenceAI is an early local task controller. LangGraph persists workflow position while an independent SQLite ledger owns effect accounting. Git workspaces, candidate fingerprints and exact approval gates connect the workflow. The executable paths are declarative static DAGs and trusted deterministic fixture writers. Claude, Codex, Grok, Gemini CLI, Antigravity, Omnilane, MCO and PAL live integrations remain disabled until execution and OS permission contracts are verified.
