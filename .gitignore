@@ -1,0 +1,14 @@
+.venv/
+.uv-cache/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.egg-info/
+dist/
+build/
+.intelligenceai/
+*.sqlite*
+.test-runs/
+.tools/
+pytest-cache-files-*/
+
