@@ -56,7 +56,9 @@ jobs:
       - name: Format
         run: uv run --frozen ruff format --check src tests scripts
       - name: Fixture, contract, recovery and process tests
-        run: uv run --frozen pytest -q --junitxml=test-results.xml
+        run: uv run --frozen pytest -q -rs --durations=10 --junitxml=test-results.xml
+      - name: Repeat owned concurrency simulations with recorded seeds
+        run: uv run --frozen python scripts/simulate_races.py
       - name: Build package
         run: uv build --no-sources --no-build-isolation
       - name: Install built wheel and smoke entry points
