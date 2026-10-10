@@ -146,6 +146,82 @@ function privateFetch(
 }
 
 describe("private boundary and failure flows", () => {
+  it("receipt checks and refresh never submit approval; only explicit retry resends the immutable intent", async () => {
+    history.replaceState({}, "", "/app/approvals");
+    const mock = privateFetch(200, {
+      state: "READY_FOR_APPROVAL",
+      evidence_verified: true,
+      candidate_digest: "a".repeat(64),
+      evidence_digest: "c".repeat(64),
+    });
+    const base = mock.getMockImplementation()!;
+    let posts = 0;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).includes("/approval-receipts/"))
+        return new Response(JSON.stringify({ found: false }));
+      if (String(input).endsWith("/approve")) {
+        if (++posts === 1) throw new Error("lost acknowledgement");
+        return new Response("{}");
+      }
+      return base(input, options);
+    });
+    const requests = () =>
+      mock.mock.calls.filter(([path]) => String(path).endsWith("/approve"));
+    const refresh = async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+      await screen.findByText(
+        "Static evidence is verified. No live model or sandbox claim is implied.",
+      );
+    };
+    const check = async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Check recorded approval receipt" }),
+      );
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "Checking did not submit approval",
+        ),
+      );
+    };
+    render(<App />);
+    await screen.findByText(
+      "Static evidence is verified. No live model or sandbox claim is implied.",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Prepare approval intent" }),
+    );
+    await check();
+    await refresh();
+    await check();
+    expect(posts).toBe(0);
+    expect(
+      screen.queryByRole("button", {
+        name: "Resend the same approval request",
+      }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Record review approval" }),
+    );
+    await screen.findByRole("alert");
+    await check();
+    await refresh();
+    await check();
+    expect(posts).toBe(1);
+    const lookups = mock.mock.calls.filter(([path]) =>
+      String(path).includes("/approval-receipts/"),
+    );
+    expect(lookups).toHaveLength(4);
+    for (const [, options] of lookups) {
+      expect(options?.method).toBeUndefined();
+      expect(options?.body).toBeUndefined();
+    }
+    fireEvent.click(
+      screen.getByRole("button", { name: "Resend the same approval request" }),
+    );
+    await waitFor(() => expect(posts).toBe(2));
+    expect(requests()[1][1]?.body).toBe(requests()[0][1]?.body);
+    expect(requests()[1][1]?.headers).toEqual(requests()[0][1]?.headers);
+  });
   it("retries the same approval payload and key after a later language rerender", async () => {
     history.replaceState({}, "", "/app/approvals");
     let clock = Date.parse("2026-10-10T10:00:00Z");
@@ -181,7 +257,7 @@ describe("private boundary and failure flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
     fireEvent.click(screen.getByRole("button", { name: "영어로 전환" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Record review approval" }),
+      screen.getByRole("button", { name: "Resend the same approval request" }),
     );
     await screen.findByRole("status");
     const requests = mock.mock.calls.filter(([path]) =>
@@ -394,6 +470,8 @@ describe("private boundary and failure flows", () => {
         if (approvals === 1) throw new Error("lost acknowledgement");
         return new Response(JSON.stringify({ review_grant_recorded: true }));
       }
+      if (String(input).includes("/approval-receipts/"))
+        return new Response(JSON.stringify({ found: true }));
       return base(input, options);
     });
     render(<App />);
@@ -425,7 +503,7 @@ describe("private boundary and failure flows", () => {
     clock += 600000;
     fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
     expect(
-      screen.getByRole("button", { name: "검토 승인 기록" }),
+      screen.getByRole("button", { name: "동일 승인 요청 다시 전송" }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "영어로 전환" }));
     fireEvent.click(
@@ -434,21 +512,24 @@ describe("private boundary and failure flows", () => {
     await screen.findByRole("status");
     const requests = () =>
       mock.mock.calls.filter(([path]) => String(path).endsWith("/approve"));
-    expect(requests()).toHaveLength(2);
-    expect(requests()[1][1]?.body).toBe(requests()[0][1]?.body);
-    expect(requests()[1][1]?.headers).toEqual(requests()[0][1]?.headers);
+    expect(requests()).toHaveLength(1);
+    const lookups = mock.mock.calls.filter(([path]) =>
+      String(path).includes("/approval-receipts/"),
+    );
+    expect(lookups).toHaveLength(1);
+    expect(lookups[0][1]?.method).toBeUndefined();
     fireEvent.click(
       screen.getByRole("button", { name: "Prepare new approval intent" }),
     );
     fireEvent.click(
       screen.getByRole("button", { name: "Record review approval" }),
     );
-    await waitFor(() => expect(approvals).toBe(3));
-    expect(requests()[2][1]?.body).not.toBe(requests()[1][1]?.body);
+    await waitFor(() => expect(approvals).toBe(2));
+    expect(requests()[1][1]?.body).not.toBe(requests()[0][1]?.body);
     expect(
-      (requests()[2][1]?.headers as Record<string, string>)["Idempotency-Key"],
-    ).not.toBe(
       (requests()[1][1]?.headers as Record<string, string>)["Idempotency-Key"],
+    ).not.toBe(
+      (requests()[0][1]?.headers as Record<string, string>)["Idempotency-Key"],
     );
   });
   it("keeps a mutation key after lost acknowledgement and releases it for the next confirmed intent", async () => {

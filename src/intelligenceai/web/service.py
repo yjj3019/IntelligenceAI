@@ -148,9 +148,30 @@ class Service:
             )
         )
 
-    def mutate(self, actor, project_id, key, payload, roles, operation: Callable):
+    @staticmethod
+    def validate_key(key):
         if not key or len(key) > 128 or not all(c.isalnum() or c in "-_" for c in key):
             raise Problem(400, "idempotency_key_required")
+
+    def approval_receipt(self, actor, project_id, task_id, key):
+        """Read an actor's historical receipt without creating or replaying a mutation."""
+        self.validate_key(key)
+        with self.db.connect() as conn:
+            self.authorize(conn, actor, project_id, {"owner", "approver"})
+            self.task_row(conn, project_id, task_id)
+            result = conn.execute(
+                select(receipts.c.result).where(
+                    receipts.c.project_id == project_id,
+                    receipts.c.actor_id == actor,
+                    receipts.c.key == key,
+                )
+            ).scalar()
+            if not result or result.get("id") != task_id or not result.get("review_approved"):
+                return {"found": False}
+            return {"found": True, "result": result}
+
+    def mutate(self, actor, project_id, key, payload, roles, operation: Callable):
+        self.validate_key(key)
         fingerprint = digest(payload)
         with self.db.begin() as conn:
             project, _ = self.authorize(conn, actor, project_id, roles, lock=True)

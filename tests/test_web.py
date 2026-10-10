@@ -12,7 +12,7 @@ pytest.importorskip("sqlalchemy")
 pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
-from sqlalchemy import insert, select, update
+from sqlalchemy import event, insert, select, update
 from sqlalchemy.engine import make_url
 
 from intelligenceai.security import digest
@@ -31,6 +31,7 @@ from intelligenceai.web.store import (
     metadata,
     now,
     projects,
+    receipts,
     sessions,
     tasks,
     uid,
@@ -368,6 +369,99 @@ def test_stale_approval_binding_rejected(fixture, field, value):
     assert response.status_code == 409
     with f["db"].connect() as conn:
         assert conn.execute(select(approvals)).all() == []
+
+
+def test_approval_receipt_reads_never_create_or_replay_approval(fixture, monkeypatch):
+    f = fixture
+    task_id, headers = submit(f)
+    binding = ready(f, task_id)
+    key = uid()
+    path = f["base"] + f"/tasks/{task_id}/approval-receipts/"
+    writes = []
+
+    def observe(_conn, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().split()[0].upper() in {"INSERT", "UPDATE", "DELETE"}:
+            writes.append(statement)
+
+    def snapshot():
+        with f["db"].connect() as conn:
+            return {
+                table.name: conn.execute(select(table)).all()
+                for table in (tasks, approvals, receipts, audit)
+            }
+
+    event.listen(f["db"], "before_cursor_execute", observe)
+    try:
+        before = snapshot()
+        for lookup in (key, key, headers["Idempotency-Key"]):
+            response = f["client"].get(path + lookup)
+            assert response.status_code == 200 and response.json() == {"found": False}
+        assert f["client"].get(f["base"] + f"/tasks/{task_id}").status_code == 200
+        assert snapshot() == before and writes == []
+    finally:
+        event.remove(f["db"], "before_cursor_execute", observe)
+
+    response = f["client"].post(
+        f["base"] + f"/tasks/{task_id}/approve",
+        json=binding,
+        headers={**headers, "Idempotency-Key": key},
+    )
+    assert response.status_code == 200
+    monkeypatch.setattr("intelligenceai.web.service.now", lambda: binding["expires_at"] + 1)
+    writes.clear()
+    event.listen(f["db"], "before_cursor_execute", observe)
+    try:
+        before = snapshot()
+        for _ in range(3):
+            response = f["client"].get(path + key)
+            assert response.status_code == 200
+            assert response.json() == {
+                "found": True,
+                "result": {
+                    "id": task_id,
+                    "review_approved": True,
+                    "execution_enabled": False,
+                },
+            }
+        assert snapshot() == before and writes == []
+    finally:
+        event.remove(f["db"], "before_cursor_execute", observe)
+
+
+def test_approval_receipt_authorizes_project_task_actor_and_current_role(fixture):
+    f = fixture
+    task_id, headers = submit(f)
+    binding = ready(f, task_id)
+    key = uid()
+    path = f["base"] + f"/tasks/{task_id}/approval-receipts/{key}"
+    assert (
+        f["client"]
+        .post(
+            f["base"] + f"/tasks/{task_id}/approve",
+            json=binding,
+            headers={**headers, "Idempotency-Key": key},
+        )
+        .status_code
+        == 200
+    )
+    assert f["client"].get(path.replace(f["project"], f["other"])).status_code == 404
+    assert f["client"].get(path.replace(task_id, uid())).status_code == 404
+    assert f["client"].get(path + ("x" * 129)).status_code == 400
+    f["sign_in"](f["viewer"])
+    assert f["client"].get(path).status_code == 403
+    f["sign_in"](f["bob"])
+    assert f["client"].get(path).status_code == 404
+    with f["db"].begin() as conn:
+        conn.execute(
+            insert(members).values(project_id=f["project"], user_id=f["bob"], role="approver")
+        )
+    assert f["client"].get(path).json() == {"found": False}
+    f["sign_in"](f["alice"])
+    with f["db"].begin() as conn:
+        conn.execute(update(members).where(members.c.user_id == f["alice"]).values(role="revoked"))
+    assert f["client"].get(path).status_code == 404
+    f["client"].cookies.clear()
+    assert f["client"].get(path).status_code == 401
 
 
 def test_approval_no_effect_dispatch_rechecks_candidate_and_permission(fixture):

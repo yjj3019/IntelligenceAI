@@ -899,7 +899,63 @@ function WorkspaceApp() {
     setError("");
     setFeedback("");
   }
-  function submitApproval(checkReceipt = false) {
+  async function checkApprovalReceipt() {
+    if (
+      !approvalIntent ||
+      !intentTargetMatches ||
+      !active ||
+      !canApprove ||
+      busy ||
+      pending.current ||
+      signingOut.current
+    )
+      return;
+    const epoch = requestEpoch.current;
+    const intent = approvalIntent;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    setFeedback("");
+    try {
+      const receipt = await api<{ found: boolean }>(
+        "/projects/" +
+          encodeURIComponent(intent.projectId) +
+          "/tasks/" +
+          encodeURIComponent(intent.taskId) +
+          "/approval-receipts/" +
+          encodeURIComponent(intent.key),
+      );
+      if (epoch !== requestEpoch.current) return;
+      if (receipt.found) {
+        setApprovalIntent((currentIntent) =>
+          currentIntent?.key === intent.key
+            ? { ...currentIntent, status: "recorded" }
+            : currentIntent,
+        );
+        setFeedback(
+          "This request receipt was recorded. Review the current task grant and expiry.",
+        );
+        setRevision((value) => value + 1);
+      } else {
+        setFeedback(
+          "No recorded receipt was found. Checking did not submit approval.",
+        );
+      }
+    } catch (err) {
+      if (epoch !== requestEpoch.current) return;
+      setError(message(err));
+      if (err instanceof ApiError && [401, 403, 404].includes(err.status)) {
+        clearPrivate();
+        setAuthNeeded(err.status === 401);
+      }
+    } finally {
+      if (epoch === requestEpoch.current) {
+        pending.current = false;
+        setBusy(false);
+      }
+    }
+  }
+  function submitApproval() {
     if (
       !approvalIntent ||
       !intentTargetMatches ||
@@ -909,11 +965,7 @@ function WorkspaceApp() {
       pending.current
     )
       return;
-    if (
-      !checkReceipt &&
-      (!reviewReady || !intentBindingMatches || intentExpired)
-    )
-      return;
+    if (!reviewReady || !intentBindingMatches || intentExpired) return;
     setApprovalIntent({ ...approvalIntent, status: "uncertain" });
     void perform(
       "tasks/" + encodeURIComponent(approvalIntent.taskId) + "/approve",
@@ -1885,13 +1937,17 @@ function WorkspaceApp() {
                           }
                           onClick={() => submitApproval()}
                         >
-                          {t("Record review approval")}
+                          {t(
+                            approvalIntent?.status === "uncertain"
+                              ? "Resend the same approval request"
+                              : "Record review approval",
+                          )}
                         </button>
                         {intentTargetMatches && approvalIntent && (
                           <button
                             className="button secondary"
                             disabled={!active || !canApprove || busy}
-                            onClick={() => submitApproval(true)}
+                            onClick={() => void checkApprovalReceipt()}
                           >
                             {t("Check recorded approval receipt")}
                           </button>

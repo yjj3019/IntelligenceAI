@@ -240,6 +240,10 @@ def create_app(settings: Settings, *, db=None, testing=False):
     def task(request: Request, project_id: str, task_id: str):
         return service.task(actor(request)["id"], project_id, task_id)
 
+    @app.get("/api/projects/{project_id}/tasks/{task_id}/approval-receipts/{key}")
+    def approval_receipt(request: Request, project_id: str, task_id: str, key: str):
+        return service.approval_receipt(actor(request)["id"], project_id, task_id, key)
+
     @app.post("/api/projects/{project_id}/tasks/{task_id}/approve")
     def approve(request: Request, project_id: str, task_id: str, data: ApprovalInput):
         user_id, key = mutation(request)

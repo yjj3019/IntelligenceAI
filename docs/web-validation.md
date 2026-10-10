@@ -4,9 +4,9 @@
 
 | 검사 | 로컬 결과 | 범위 |
 |---|---|---|
-| backend 웹 회귀 | 42 passed, 1 skipped | SQLite fixture, 객체별 인가, CSRF/Host/Origin, 공격 입력, 세션, 중복·취소·복구·승인 binding; 실제 PostgreSQL 동시성 테스트는 로컬 skip |
-| 서명된 OIDC 회귀 | 위 42개에 포함 | 실제 Authlib 검증 경로 + 오프라인 서명 issuer; nonce/audience/issuer/expiry/서명/미등록 사용자 거부 |
-| frontend 회귀 | 25 passed | 8개 화면, 공개·private 경계, 취소 대상 고정·뒤로가기·다른 작업 이동·중복 확인, 자동 재접속 권한회수, 승인 payload/key/expiry 보존·기록 receipt 조회, 로그아웃 후 지연 GET·mutation 차단, 안전한 KO/EN 오류 안내 |
+| backend 웹 회귀 | 44 passed, 1 skipped | SQLite fixture, 객체별 인가, CSRF/Host/Origin, 공격 입력, 세션, 중복·취소·복구·승인 binding, receipt GET의 SQL 쓰기 0회·actor/task/권한 재검사; 실제 PostgreSQL 동시성 테스트는 로컬 skip |
+| 서명된 OIDC 회귀 | 위 44개에 포함 | 실제 Authlib 검증 경로 + 오프라인 서명 issuer; nonce/audience/issuer/expiry/서명/미등록 사용자 거부 |
+| frontend 회귀 | 26 passed | 8개 화면, 공개·private 경계, 취소 대상 고정·뒤로가기·다른 작업 이동·중복 확인, 자동 재접속 권한회수, 승인 payload/key/expiry 보존·읽기 전용 receipt 조회·명시 재전송, 로그아웃 후 지연 GET·mutation 차단, 안전한 KO/EN 오류 안내 |
 | frontend lint / typecheck | 통과 | ESLint 및 strict TypeScript |
 | 일반·공개 frontend build | 통과 | `dist` 및 별도 `dist-public` |
 | Python lint / format | 통과 | 전체 `src tests scripts` |
@@ -21,7 +21,9 @@
 
 전용 loopback fullstack에서는 합성 서명 issuer와 실제 Authlib callback을 거쳐 LOCAL TEST USER로 로그인하고, private 계획 미리보기·HELD 제출·취소 확인 대화상자·never-started 취소 확인 완료·복구 generation 증가·불확실한 lease의 복구 차단·로그아웃 데이터 제거를 검증했습니다. 이 검증은 실제 외부 issuer나 운영 PostgreSQL 연결 증거가 아닙니다. 브라우저 설치나 보안 우회는 하지 않았습니다.
 
-독립 리뷰 후 추가한 회귀 9개는 수정 전 `eb72aa5` 소스에서 모두 실패했고, 수정 후 기존 16개와 함께 25개가 통과했습니다. 테스트는 실제 모델 성공을 만들지 않는 fetch mock과 합성 검증 evidence를 사용합니다. 승인 의도는 사용자가 준비할 때 한 번 고정하며, 응답 유실 후 재시도와 만료 후 receipt 조회에도 동일 payload와 key를 보냅니다. 새로운 승인은 별도 의도를 준비해야 합니다. 로그아웃·권한회수·다른 사용자 및 경로 전환은 요청 epoch를 갱신해 오래된 응답의 데이터·오류·피드백 적용을 차단합니다.
+독립 리뷰 후 추가한 회귀 9개는 수정 전 `eb72aa5` 소스에서 모두 실패했고, 수정 후 기존 16개와 함께 25개가 통과했습니다. 테스트는 실제 모델 성공을 만들지 않는 fetch mock과 합성 검증 evidence를 사용합니다. 승인 의도는 사용자가 준비할 때 한 번 고정하며, 응답 유실 후 명시적인 재전송만 동일 payload와 key로 POST합니다. receipt 조회는 쓰기 없는 GET으로 별도 처리합니다. 새로운 승인은 별도 의도를 준비해야 합니다. 로그아웃·권한회수·다른 사용자 및 경로 전환은 요청 epoch를 갱신해 오래된 응답의 데이터·오류·피드백 적용을 차단합니다.
+
+후속 리뷰의 receipt 조회 P2에는 회귀 1개를 더 추가했습니다. 이 테스트는 수정 전 `f826d10`에서 실패하고 수정 후 통과했습니다. 승인 준비 후 조회·새로고침의 승인 POST는 0회이고, 응답 유실 상태의 반복 조회에도 추가 POST는 0회입니다. "동일 승인 요청 다시 전송"만 이전 payload/key를 재사용합니다. backend에서는 SQL 이벤트와 원장 snapshot을 함께 비교해 receipt가 없거나 만료된 기존 receipt를 여러 번 조회해도 INSERT/UPDATE/DELETE가 0회임을 확인했습니다. 다른 사용자·프로젝트·작업, viewer, 권한 회수와 만료 세션도 검사합니다.
 
 [실제 공개 Sites URL](https://intelligenceai.violet-pixie-4145.chatgpt.site)에서 지원되는 전용 Chrome으로 KO/EN 각각 8개 화면을 390×844 viewport에서 확인했습니다. 모든 화면의 document 너비가 viewport 이내였고, 읽기 전용 합성 안내·모델 호출 0·승인 비활성·언어 보존·reload·Back/Forward·메뉴 Enter/Escape·문서 링크·private 미연결 안내를 확인했습니다. 테스트 탭의 warning/error는 0개였으며 임시 viewport는 복원했습니다. Sites API의 접근 모드는 `public`, 버전 1의 배포 상태는 `succeeded`입니다.
 

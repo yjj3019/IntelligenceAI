@@ -370,6 +370,9 @@ export const ko = {
   disabled: "비활성",
   human: "사람이 결정",
   Language: "언어",
+  "No recorded receipt was found. Checking did not submit approval.":
+    "저장된 접수 기록이 없습니다. 기록 조회로 승인을 제출하지 않았습니다.",
+  "Resend the same approval request": "동일 승인 요청 다시 전송",
   "Switch to Korean": "한국어로 전환",
   "Switch to English": "영어로 전환",
   Timezone: "시간대",
