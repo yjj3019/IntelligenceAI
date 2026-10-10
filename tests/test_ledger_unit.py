@@ -36,9 +36,11 @@ def test_same_failure_limit_independent_of_repair_limit(tmp_path):
                 budgets=Budgets(max_repairs=2),
             )
         )
-        assert ledger.repair("task", "same-error")
-        assert ledger.repair("task", "same-error")
-        assert not ledger.repair("task", "same-error")
+        assert ledger.repair("task", "same-error", operation_id="round-0", expected_generation=1)
+        assert ledger.repair("task", "same-error", operation_id="round-1", expected_generation=1)
+        assert not ledger.repair(
+            "task", "same-error", operation_id="round-2", expected_generation=1
+        )
         assert ledger.task("task")["state"] == "BLOCKED"
     finally:
         ledger.close()

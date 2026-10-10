@@ -84,6 +84,8 @@ class Step(Contract):
 
     @model_validator(mode="after")
     def role_mode(self):
+        if self.role == "implement" and self.mode != "write":
+            raise ValueError("implementation requires write mode and a writer lease")
         if self.role != "implement" and self.mode != "read_only":
             raise ValueError("reviews and analysis must be read only")
         return self

@@ -23,6 +23,7 @@ from .security import SafetyError, canonical, clean, digest, redact
 
 class GraphState(TypedDict, total=False):
     task_id: str
+    owner_generation: int
     round_number: int
     done: bool
 
@@ -82,7 +83,7 @@ class Controller:
     ) -> str:
         if scenario not in {"success", "repair", "exhaust"}:
             raise SafetyError("unknown fixture scenario")
-        plan = plan or fixture_plan()
+        plan = Plan.model_validate((plan or fixture_plan()).model_dump())
         if len(plan.steps) != 1 or plan.steps[0].role != "implement":
             raise SafetyError("only the documented single fixture plan is executable")
         for step in plan.steps:
@@ -124,18 +125,28 @@ class Controller:
         data = self.metadata(tid)
         step = Plan.model_validate(data["plan"]).steps[0]
         authorize_step(step)
-        self.ledger.state(tid, State.RUNNING)
-        record = self.ledger.reserve(tid, step, round_number, data["workspace"])
+        generation = self._generation(state)
+        self.ledger.state(tid, State.RUNNING, expected_generation=generation)
+        record = self.ledger.reserve(
+            tid, step, round_number, data["workspace"], expected_generation=generation
+        )
         self._crash("reserved")
         if record["status"] == "SUCCEEDED":
             return {"round_number": round_number}
         if record["status"] != "RESERVED":
-            self.ledger.state(tid, State.NEEDS_RECONCILIATION)
+            self.ledger.state(tid, State.NEEDS_RECONCILIATION, expected_generation=generation)
             raise SafetyError("start intent uncertain; automatic replay refused")
         if not self.ledger.start(record["id"]):
             raise SafetyError("another owner already started invocation")
         self._crash("started")
-        receipt = fixture.implement(Path(data["workspace"]), round_number, data["scenario"])
+        receipt = fixture.implement(
+            Path(data["workspace"]),
+            round_number,
+            data["scenario"],
+            ledger=self.ledger,
+            invocation_id=record["id"],
+            generation=generation,
+        )
         self._crash("effect")
         self.ledger.receive(record["id"], record["generation"], receipt)
         self._crash("receipt")
@@ -150,7 +161,8 @@ class Controller:
 
     def _verify(self, state: GraphState) -> dict:
         tid = state["task_id"]
-        self.ledger.state(tid, State.VERIFYING)
+        generation = self._generation(state)
+        self.ledger.state(tid, State.VERIFYING, expected_generation=generation)
         data = self.metadata(tid)
         target = Path(data["workspace"])
         candidate = self.candidate(tid)
@@ -161,7 +173,7 @@ class Controller:
             self.scanner.scan(payloads, candidate.candidate_id, "candidate-gitleaks-v1"),
             fixture.verify(target, candidate.candidate_id),
         ]
-        self.ledger.state(tid, State.REVIEWING)
+        self.ledger.state(tid, State.REVIEWING, expected_generation=generation)
         findings = fixture.review(target, candidate.candidate_id)
         # Check the candidate again after every inspection; changed bytes invalidate all evidence.
         if self.candidate(tid) != candidate:
@@ -175,7 +187,7 @@ class Controller:
             "live_adapters": "UNVERIFIED",
             "external_action_count": 0,
         }
-        self.ledger.set_result(tid, result)
+        self.ledger.set_result(tid, result, expected_generation=generation)
         self._crash("verified")
         return {}
 
@@ -183,9 +195,26 @@ class Controller:
         tid = state["task_id"]
         task = self.ledger.task(tid)
         result = task["result"]
+        generation = self._generation(state)
         blockers = [f for f in result["findings"] if f["blocking"] and f["reproduced"]]
         if blockers:
-            if self.ledger.repair(tid, digest([f["finding_id"] for f in blockers])):
+            signature = digest([f["finding_id"] for f in blockers])
+            operation_id = digest(
+                [
+                    "repair",
+                    tid,
+                    generation,
+                    state.get("round_number", 0),
+                    result["candidate"]["candidate_id"],
+                    signature,
+                    task["data"]["policy_version"],
+                ]
+            )
+            allowed = self.ledger.repair(
+                tid, signature, operation_id=operation_id, expected_generation=generation
+            )
+            self._crash("repair_committed")
+            if allowed:
                 return {"round_number": state.get("round_number", 0) + 1, "done": False}
             return {"done": True}
         status = (
@@ -195,7 +224,7 @@ class Controller:
             if any(e["status"] == "UNVERIFIED" for e in result["evidence"])
             else State.READY_FOR_APPROVAL
         )
-        self.ledger.state(tid, status)
+        self.ledger.state(tid, status, expected_generation=generation)
         return {"done": True}
 
     def _approval_wait(self, state: GraphState) -> dict:
@@ -205,7 +234,7 @@ class Controller:
             decision = interrupt({"task_id": tid, "candidate_id": self.candidate(tid).candidate_id})
             if decision != "local-complete":
                 raise SafetyError("unrecognized authenticated controller resume")
-            self.ledger.state(tid, State.COMPLETED)
+            self.ledger.state(tid, State.COMPLETED, expected_generation=self._generation(state))
         return {}
 
     def run(self, task_id: str) -> dict:
@@ -224,13 +253,24 @@ class Controller:
         checkpoint = self.graph.get_state(self.config(task_id))
         try:
             if checkpoint.values:
+                if "owner_generation" not in checkpoint.values:
+                    raise SafetyError("legacy checkpoint requires explicit reconciliation")
                 self.graph.invoke(None, self.config(task_id))
             else:
-                self.graph.invoke({"task_id": task_id, "round_number": 0}, self.config(task_id))
-        except SafetyError as exc:
-            if self.ledger.task(task_id)["state"] != State.NEEDS_RECONCILIATION:
-                self.ledger.state(task_id, State.BLOCKED)
-            self.ledger.event(task_id, {"error": redact(str(exc))})
+                self.graph.invoke(
+                    {"task_id": task_id, "round_number": 0, "owner_generation": task["generation"]},
+                    self.config(task_id),
+                )
+        except (SafetyError, ValueError, OSError):
+            current = self.ledger.task(task_id)
+            if current["generation"] == task["generation"] and current["state"] not in {
+                State.NEEDS_RECONCILIATION,
+                State.CANCELLED,
+                State.BLOCKED,
+                State.FAILED,
+            }:
+                self.ledger.state(task_id, State.BLOCKED, expected_generation=task["generation"])
+            self.ledger.event(task_id, {"error": "execution or candidate validation failed"})
         return self.status(task_id)
 
     def approve(self, task_id: str, action: Action, principal: str, ttl: int = 900):
@@ -254,17 +294,17 @@ class Controller:
             if not result or result["candidate"] != candidate.model_dump():
                 raise SafetyError("candidate drift invalidated evidence and approval")
             return candidate
-        except SafetyError:
-            self.ledger.db.execute("DELETE FROM approvals WHERE task_id=?", (task_id,))
-            task = self.ledger.task(task_id)
-            if task["state"] not in {
-                State.CANCELLED,
-                State.NEEDS_RECONCILIATION,
-                State.FAILED,
-                State.BLOCKED,
-            }:
-                self.ledger.state(task_id, State.BLOCKED)
-            raise
+        except (SafetyError, ValueError, OSError) as exc:
+            self.ledger.invalidate_candidate(task_id)
+            raise SafetyError(
+                "candidate validation failed; approval permanently invalidated"
+            ) from exc
+
+    def _generation(self, state: GraphState) -> int:
+        generation = state.get("owner_generation")
+        if generation is None or self.ledger.task(state["task_id"])["generation"] != generation:
+            raise SafetyError("missing or stale graph owner generation")
+        return generation
 
     def status(self, task_id: str) -> dict:
         task = self.ledger.task(task_id)

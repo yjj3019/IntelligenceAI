@@ -64,6 +64,7 @@ def registry() -> list[dict]:
 
 
 def authorize_step(step: Step):
+    step = Step.model_validate(step.model_dump())
     cap = CAPABILITIES.get(step.executor)
     if not cap or not cap.enabled or step.provider not in cap.providers:
         raise SafetyError("executor/provider capability disabled or unverified")

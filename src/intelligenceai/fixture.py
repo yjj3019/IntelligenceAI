@@ -1,24 +1,54 @@
 import ast
+import os
+import stat
+import tempfile
 import time
 from pathlib import Path
 
 from .contracts import Evidence, Finding
+from .ledger import Ledger
 from .security import SafetyError
 
 FIXTURE_FILE = "answer.py"
 
 
-def implement(workspace: Path, round_number: int, scenario: str) -> dict:
+def implement(
+    workspace: Path,
+    round_number: int,
+    scenario: str,
+    *,
+    ledger: Ledger,
+    invocation_id: str,
+    generation: int,
+) -> dict:
     # Only trusted constant bytes. Requests and worker text are never commands or code.
     path = workspace / FIXTURE_FILE
-    if path.exists() and path.is_symlink():
-        raise SafetyError("fixture target is linked")
     value = (
         41
         if scenario in {"repair", "exhaust"} and (round_number == 0 or scenario == "exhaust")
         else 42
     )
-    path.write_text(f"ANSWER = {value}\n", encoding="utf-8")
+    with ledger.write_guard(invocation_id, generation, str(workspace)):
+        if workspace.resolve(strict=True) != workspace.absolute():
+            raise SafetyError("fixture workspace is linked")
+        try:
+            existing = path.lstat()
+        except FileNotFoundError:
+            existing = None
+        if existing and (not stat.S_ISREG(existing.st_mode) or existing.st_nlink != 1):
+            raise SafetyError("linked or nonregular fixture target refused before writing")
+        descriptor, temporary = tempfile.mkstemp(prefix=".iai-write-", dir=workspace)
+        try:
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(f"ANSWER = {value}\n".encode())
+                output.flush()
+                os.fsync(output.fileno())
+            # Replace the directory entry with a fresh inode; never follow/open its target.
+            # Concurrent entry replacement cannot redirect writes to an external inode.
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
     return {
         "status": "SUCCEEDED",
         "native_job_id": None,

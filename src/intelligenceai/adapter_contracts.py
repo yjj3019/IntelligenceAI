@@ -46,6 +46,8 @@ def validate_stream(executor: str, lines: list[str]) -> Observation:
     }
     if executor not in types:
         raise SafetyError("unknown stream contract")
+    discriminator = "event" if executor == "antigravity" else "type"
+    other = "type" if discriminator == "event" else "event"
     try:
         records = [json.loads(line) for line in lines]
     except ValueError as exc:
@@ -53,10 +55,10 @@ def validate_stream(executor: str, lines: list[str]) -> Observation:
     if (
         not records
         or any(not isinstance(r, dict) for r in records)
-        or records[0].get("type") != "init"
-        or any(r.get("type") not in types[executor] for r in records)
-        or sum(r.get("type") == "result" for r in records) != 1
-        or records[-1].get("type") != "result"
+        or records[0].get(discriminator) != "init"
+        or any(other in r or r.get(discriminator) not in types[executor] for r in records)
+        or sum(r.get(discriminator) == "result" for r in records) != 1
+        or records[-1].get(discriminator) != "result"
     ):
         raise SafetyError("missing, duplicate or mixed stream result")
     return Observation("TERMINAL_FRAME_ONLY", "content withheld; semantic contract unverified")

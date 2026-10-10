@@ -36,6 +36,10 @@ class Ledger:
             CREATE TABLE IF NOT EXISTS failures (
                 task_id TEXT NOT NULL, signature TEXT NOT NULL, count INTEGER NOT NULL,
                 PRIMARY KEY(task_id, signature));
+            CREATE TABLE IF NOT EXISTS repair_decisions (
+                task_id TEXT NOT NULL, operation_id TEXT NOT NULL,
+                signature TEXT NOT NULL, generation INTEGER NOT NULL, allowed INTEGER NOT NULL,
+                PRIMARY KEY(task_id, operation_id));
         """)
 
     def close(self):
@@ -73,8 +77,11 @@ class Ledger:
         value["result"] = json.loads(value["result"]) if value["result"] else None
         return value
 
-    def state(self, task_id: str, state: str):
-        current = self.task(task_id)["state"]
+    def _state_locked(self, task_id: str, state: str, expected_generation: int):
+        task = self.task(task_id)
+        current = task["state"]
+        if task["generation"] != expected_generation:
+            raise SafetyError("stale generation state transition refused")
         if (
             current in {State.CANCELLED, State.NEEDS_RECONCILIATION, State.BLOCKED, State.FAILED}
             and current != state
@@ -83,14 +90,36 @@ class Ledger:
         self.db.execute("UPDATE tasks SET state=? WHERE id=?", (state, task_id))
         self.event(task_id, {"state": state})
 
-    def set_result(self, task_id: str, value: dict):
-        self.db.execute("UPDATE tasks SET result=? WHERE id=?", (canonical(clean(value)), task_id))
+    def state(self, task_id: str, state: str, *, expected_generation: int):
+        with self.transaction():
+            self._state_locked(task_id, state, expected_generation)
 
-    def reserve(self, task_id: str, step: Step, attempt: int, workspace: str) -> dict:
+    def set_result(self, task_id: str, value: dict, *, expected_generation: int | None = None):
+        with self.transaction():
+            task = self.task(task_id)
+            if expected_generation is not None and task["generation"] != expected_generation:
+                raise SafetyError("stale generation verification refused")
+            if task["state"] in {State.CANCELLED, State.NEEDS_RECONCILIATION}:
+                raise SafetyError("verification refused for cancelled or uncertain task")
+            self.db.execute(
+                "UPDATE tasks SET result=? WHERE id=?", (canonical(clean(value)), task_id)
+            )
+
+    def reserve(
+        self,
+        task_id: str,
+        step: Step,
+        attempt: int,
+        workspace: str,
+        *,
+        expected_generation: int | None = None,
+    ) -> dict:
         authorize_step(step)
         key = digest([task_id, step.step_id, attempt])
         with self.transaction():
             task = self.task(task_id)
+            if expected_generation is not None and task["generation"] != expected_generation:
+                raise SafetyError("stale generation reservation refused")
             if step.executor != "fixture":
                 raise SafetyError("only verified fixture executor can reserve effects")
             old = self.db.execute("SELECT * FROM invocations WHERE id=?", (key,)).fetchone()
@@ -238,9 +267,29 @@ class Ledger:
                 )
             self.event(task_id, {"state": target, "termination_verified": not bool(unknown)})
 
-    def repair(self, task_id: str, signature: str):
+    def repair(self, task_id: str, signature: str, *, operation_id: str, expected_generation: int):
         with self.transaction():
             task = self.task(task_id)
+            if task["generation"] != expected_generation:
+                raise SafetyError("stale generation repair refused")
+            decision = self.db.execute(
+                "SELECT * FROM repair_decisions WHERE task_id=? AND operation_id=?",
+                (task_id, operation_id),
+            ).fetchone()
+            if decision:
+                if (
+                    decision["signature"] != signature
+                    or decision["generation"] != expected_generation
+                ):
+                    raise SafetyError("repair operation identity conflicts with previous decision")
+                return bool(decision["allowed"])
+            if task["state"] in {
+                State.CANCELLED,
+                State.NEEDS_RECONCILIATION,
+                State.BLOCKED,
+                State.FAILED,
+            }:
+                raise SafetyError("repair refused for terminal or uncertain task")
             row = self.db.execute(
                 "SELECT count FROM failures WHERE task_id=? AND signature=?", (task_id, signature)
             ).fetchone()
@@ -255,10 +304,56 @@ class Ledger:
             if allowed:
                 self.db.execute("UPDATE tasks SET repairs=repairs+1 WHERE id=?", (task_id,))
                 self.db.execute("DELETE FROM approvals WHERE task_id=?", (task_id,))
-                self.state(task_id, State.REPAIRING)
+                self._state_locked(task_id, State.REPAIRING, expected_generation)
             else:
-                self.state(task_id, State.BLOCKED)
+                self._state_locked(task_id, State.BLOCKED, expected_generation)
+            self.db.execute(
+                "INSERT INTO repair_decisions VALUES(?,?,?,?,?)",
+                (task_id, operation_id, signature, expected_generation, int(allowed)),
+            )
             return allowed
+
+    @contextmanager
+    def write_guard(self, invocation_id: str, generation: int, workspace: str):
+        # Hold the ledger transaction through the trusted fixture write. Cancel cannot
+        # commit between the authority check and that write. This is not OS containment.
+        with self.transaction():
+            row = self.db.execute(
+                "SELECT * FROM invocations WHERE id=?", (invocation_id,)
+            ).fetchone()
+            lease = self.db.execute(
+                "SELECT invocation_id FROM writers WHERE workspace=?", (workspace,)
+            ).fetchone()
+            if (
+                row is None
+                or row["mode"] != "write"
+                or row["status"] != "STARTING"
+                or row["generation"] != generation
+                or lease is None
+                or lease[0] != invocation_id
+            ):
+                raise SafetyError("active matching writer lease required at write boundary")
+            task = self.task(row["task_id"])
+            if task["generation"] != generation or task["state"] != State.RUNNING:
+                raise SafetyError("stale or cancelled fixture write refused")
+            yield
+
+    def invalidate_candidate(self, task_id: str):
+        with self.transaction():
+            row = self.db.execute(
+                "SELECT state,generation FROM tasks WHERE id=?", (task_id,)
+            ).fetchone()
+            self.db.execute("DELETE FROM approvals WHERE task_id=?", (task_id,))
+            if row and row["state"] not in {
+                State.CANCELLED,
+                State.NEEDS_RECONCILIATION,
+                State.BLOCKED,
+                State.FAILED,
+            }:
+                self._state_locked(task_id, State.BLOCKED, row["generation"])
+            self.event(
+                task_id, {"candidate_validation": "failed; approval permanently invalidated"}
+            )
 
     def invocations(self, task_id: str) -> list[dict]:
         return [
