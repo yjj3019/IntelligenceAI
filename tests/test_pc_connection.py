@@ -259,7 +259,18 @@ def test_start_is_single_use_and_results_are_reports_and_idempotent(fixture, tmp
 
 
 @pytest.mark.parametrize(
-    "change", ["session", "role", "user", "generation", "policy", "candidate", "profile", "expiry"]
+    "change",
+    [
+        "session",
+        "role",
+        "user",
+        "generation",
+        "policy",
+        "candidate",
+        "profile",
+        "expiry",
+        "registration_expiry",
+    ],
 )
 def test_snapshot_and_authority_change_prevents_start(fixture, tmp_path, change):
     f = fixture
@@ -287,6 +298,10 @@ def test_snapshot_and_authority_change_prevents_start(fixture, tmp_path, change)
                 update(local_cli_profiles)
                 .where(local_cli_profiles.c.metadata["runner_id"].as_string() == pair["id"])
                 .values(active=False)
+            )
+        elif change == "registration_expiry":
+            conn.execute(
+                update(pc_runners).where(pc_runners.c.id == pair["id"]).values(expires_at=now() - 1)
             )
         else:
             conn.execute(update(pc_attempts).values(expires_at=now() - 1))
@@ -456,6 +471,43 @@ def test_pc_client_runs_without_db_or_oidc_configuration_and_reuploads_only_resu
     assert stored["result"]["outcome"] == "COMPLETED"
     assert client.retry_result(journal.stem)["source"] == "USER_DEVICE_REPORT"
     assert client.once() is False and runtime.calls == 1
+
+
+def test_production_http_client_contract_with_synthetic_https_transport(
+    fixture, tmp_path, monkeypatch
+):
+    import httpx
+
+    from intelligenceai.web import pc_client
+
+    f = fixture
+    _, _, _, _, runtime, _ = queued(f, tmp_path)
+    actual_client = httpx.Client
+    seen = []
+
+    def transport(request):
+        assert request.url.scheme == "https" and request.url.host == "testserver"
+        assert TOKEN not in str(request.url) and "cookie" not in request.headers
+        seen.append(request.url.path)
+        response = f["client"].post(
+            request.url.path,
+            content=request.read(),
+            headers={
+                "Authorization": request.headers["authorization"],
+                "Content-Type": request.headers["content-type"],
+            },
+        )
+        return httpx.Response(response.status_code, content=response.content)
+
+    def http_client(**options):
+        assert options == {"trust_env": False, "follow_redirects": False, "timeout": 10}
+        return actual_client(transport=httpx.MockTransport(transport), **options)
+
+    monkeypatch.setattr(pc_client.httpx, "Client", http_client)
+    client = Client(API("https://testserver", TOKEN), runtime, tmp_path / "pc-http")
+    assert client.once() is True and runtime.calls == 1
+    assert seen[0:2] == ["/api/pc/claim", "/api/pc/start"]
+    assert "/api/pc/heartbeat" in seen and seen[-1] == "/api/pc/result"
 
 
 def test_lost_start_response_journal_prevents_native_call_and_restart_replay(fixture, tmp_path):
