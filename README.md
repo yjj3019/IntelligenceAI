@@ -84,5 +84,5 @@ uv run --frozen ruff format --check src tests
 
 fixture 수직 흐름, 계획·경로 계약, 승인 변경, crash·재시작, 시크릿 마스킹, Linux/macOS 자식 프로세스 종료와 MCP SDK stdio 연결를 테스트합니다. 실제 vendor E2E, 모델 선택, API 연결, Windows/WSL 격리와 성능·비용은 별도 `UNVERIFIED`입니다. 외부 작업의 exactly-once 실행이나 측정하지 않은 품질·속도 향상을 보장하지 않습니다.
 
-실제 연결을 열기 전에는 고정 버전별 caller·프로세스·모델 확인과 OS 권한 경계를 검증해야 합니다. 상태 화면, 임의 프로젝트의 테스트 실행, production 배포는 이후 범위입니다. Apple Silicon·Intel 설치와 정확한 CI 검증 범위는 [macOS 안내](docs/macos.md)에 정리했습니다.
+실제 연결을 열기 전에는 고정 버전별 caller·프로세스·모델 확인과 OS 권한 경계를 검증해야 합니다. 웹 상태 화면은 별도의 private 원장에 연결했습니다. 임의 프로젝트의 테스트 실행과 실제 production 배포 검증은 남아 있습니다. Apple Silicon·Intel 설치와 정확한 CI 검증 범위는 [macOS 안내](docs/macos.md)에 정리했습니다.
 

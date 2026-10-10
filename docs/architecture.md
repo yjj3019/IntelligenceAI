@@ -41,5 +41,5 @@ invocation ID는 task·step·attempt의 digest입니다. 중복 결과는 동일
 
 `READY → RUNNING → VERIFYING → REVIEWING → REPAIRING` 또는 `READY_FOR_APPROVAL → COMPLETED`를 사용합니다. 필수 scanner 미확인은 `UNVERIFIED`, 실패는 `FAILED`, 범위 위반·수리 한도는 `BLOCKED`, 시작 불명은 `NEEDS_RECONCILIATION`입니다. 취소할 때 진행 중인 효과가 불명이라면 CANCELLED로 성공 처리하지 않습니다.
 
-CLI와 로컬 stdio MCP는 같은 controller의 typed DAG를 실행합니다. step 결과와 명시적 result reference를 저장하고 writer는 직렬화하며 병렬 정적 검토는 고정된 후보 바이트를 읽습니다. 다음 항목은 미구현입니다: 임의 모델 분해, 실제 MCO/PAL 리뷰, 사용자 프로젝트의 임의 test/build 실행, 강제 복구, cleanup과 상태 UI입니다. MCP는 operator가 부여한 저장소에서 여섯 tool만 노출하며 승인·외부 작업을 제공하지 않습니다.
+CLI와 로컬 stdio MCP는 같은 controller의 typed DAG를 실행합니다. step 결과와 명시적 result reference를 저장하고 writer는 직렬화하며 병렬 정적 검토는 고정된 후보 바이트를 읽습니다. 다음 항목은 미구현입니다: 임의 모델 분해, 실제 MCO/PAL 리뷰, 사용자 프로젝트의 임의 test/build 실행, 강제 복구와 cleanup입니다. 웹 상태 UI는 별도의 private 원장을 사용합니다. MCP는 operator가 부여한 저장소에서 여섯 tool만 노출하며 승인·외부 작업을 제공하지 않습니다.
 

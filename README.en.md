@@ -63,5 +63,5 @@ uv run --frozen ruff check src tests
 uv run --frozen ruff format --check src tests
 ```
 
-CI checks CLI/DAG, contracts, approval, recovery, actual stdio SDK, ordinary Linux/macOS process groups, secret scans and installed wheel entry points. Vendor E2E, API connectivity, Windows/WSL isolation and cost/performance remain `UNVERIFIED`. No external exactly-once or measured quality improvement is claimed. UI is deferred. See the [macOS guide](docs/macos.md) for separate Apple Silicon/Intel CI and support boundaries.
+CI checks CLI/DAG, contracts, approval, recovery, actual stdio SDK, ordinary Linux/macOS process groups, secret scans and installed wheel entry points. Vendor E2E, API connectivity, Windows/WSL isolation and cost/performance remain `UNVERIFIED`. No external exactly-once or measured quality improvement is claimed. The web GUI uses a separate private ledger and deployment boundary. See the [macOS guide](docs/macos.md) for separate Apple Silicon/Intel CI and support boundaries.
 

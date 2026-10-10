@@ -13,7 +13,7 @@
 | 5 검사·리뷰·수리 | AST assertion, 동일 후보 fixture review, reproduced blocker만 2회 수리 | 실제 test/build/lint profile·MCO/PAL 리뷰 UNVERIFIED |
 | 6 최소 7개 레코드 | Task/Step/Invocation/Candidate/Finding/Evidence/Approval typed schema | distributed/multi-user 운영 미구현 |
 | 6 저장·복구 | 실제 SqliteSaver와 별도 FULL/WAL ledger, restart+interrupt/resume 테스트 | Postgres 미도입 |
-| 6 인터페이스 | submit/preview/status/results/approve/reject/cancel/run/recover/dry-run/capabilities CLI | 로컬 stdio MCP 여섯 tool 구현, 상태 화면 미구현 |
+| 6 인터페이스 | submit/preview/status/results/approve/reject/cancel/run/recover/dry-run/capabilities CLI | 로컬 stdio MCP 여섯 tool, 별도 private 웹 콘솔·합성 데모 구현 |
 | 7 승인·근거 | exact candidate/action/argv/destination/policy/proof/scope/expiry digest, mutation gate 테스트 | 실제 외부 action 항상 disabled |
 | 7 시크릿 | known-pattern redaction, mandatory pinned Gitleaks contract, sanitized report metadata | native Windows scanner supervision·모든 secret 탐지 UNVERIFIED |
 | 7 격리 | live worker disabled, 링크·위험경로·필터 거부, worktree 한계 명시 | 실제 OS sandbox/credential isolation UNVERIFIED |
@@ -22,14 +22,14 @@
 | 8 환경 | Windows/Linux·macOS arm64/x64 CI, repo-local venv/lock, 설치 wheel smoke | WSL2/auth 동작 UNVERIFIED, 설정 변경 없음 |
 | 9 단계 P0 | 존재/버전만 확인, official 계약 기록 | paid auth/model probe 생략, live P0 차단 |
 | 9 단계 P1–P3 | fixture 수직 흐름, 제한 수리, 승인·복구 회귀 | 실제 vendor/OS 검증 별도 필요 |
-| 9 단계 P4–P5 | API/외부 executor capability 미노출 | stdio MCP 구현, UI/publish/merge/deploy 미구현 |
+| 9 단계 P4–P5 | 외부 executor capability 미노출 | stdio MCP·private 웹 API 구현, 실제 runner/publish/merge/deploy 비활성 |
 | 10 수용 기준 | fixture PASS·실제 미검증 분리, 비용/속도/품질/exactly-once 과장 없음 | 전체 제품 acceptance는 미충족 |
 | 11 대안 | 현재 구조 유지 | scale 필요 시 별도 평가 |
 | 12 산출물 상태 | 코드·문서·lock·테스트·CI | live E2E·API·성능·비용은 UNVERIFIED |
 
 ## 실제 P0 관찰
 
-MCP 추가 구현: 같은 Controller의 로컬 stdio service, operator repository grant, durable 중복 admission 및 여섯 tool을 구현했습니다. 실제 SDK client 왕복과 권한 주입·재접속·취소 경합은 `tests/test_mcp_stdio.py`에 있습니다. 모델 tool의 approval/publish/merge/deploy, HTTP 포트, 앱 등록 및 UI는 구현하지 않습니다.
+MCP 추가 구현: 같은 Controller의 로컬 stdio service, operator repository grant, durable 중복 admission 및 여섯 tool을 구현했습니다. 실제 SDK client 왕복과 권한 주입·재접속·취소 경합은 `tests/test_mcp_stdio.py`에 있습니다. 모델 tool에는 approval/publish/merge/deploy, HTTP 포트나 앱 등록을 제공하지 않습니다. 후속 [웹 GUI](web-architecture.md)는 MCP·로컬 SQLite와 분리된 API·OIDC 세션·PostgreSQL 원장을 사용합니다.
 
 다단계 추가 구현: steps[0]와 단일 파일에 의존하던 controller 실행을 typed DAG로 교체했습니다. step receipt·result reference·직렬 writer·고정 후보의 병렬 정적 검토·실패 dependency 차단·기존 repair decision을 연결했습니다. 정적 parser와 두 소유 샘플의 3-step E2E는 `tests/test_dag.py`에서 확인합니다. 임의 프로젝트 test/build 실행은 계속 UNVERIFIED입니다.
 
