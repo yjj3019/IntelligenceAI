@@ -395,6 +395,37 @@ def test_gate_to_http_revocation_denies_upstream_and_refunds_proven_unsent(
     assert accounting(fixture)[1]["held_microusd"] == 0
 
 
+def test_monitor_rollback_cannot_undo_profile_revocation(fixture, monkeypatch):
+    d, r, runtime, facts, *_ = queued(fixture)
+    d.prepare(r["id"], runtime, facts)
+    intent = PaidReviewIntent.model_validate(worker_descriptor(fixture["db"], r["id"])["intent"])
+    ledger = PaidLedger(fixture["db"])
+    ledger.claim_launch(intent)
+    original = ledger.locked
+    monitor_connections = []
+
+    def failed_monitor(conn, *args, **kwargs):
+        monitor_connections.append(conn.connection.driver_connection)
+        original(conn, *args, **kwargs)
+        # A failed poll must roll back only its own transaction, including on PG
+        # where the other connection cannot see the uncommitted profile UPDATE.
+        raise SafetyError("synthetic_monitor_failure")
+
+    monkeypatch.setattr(ledger, "locked", failed_monitor)
+    with fixture["db"].begin() as writer:
+        writer.execute(update(paid_profiles).values(active=False))
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(ledger.active, intent).result(timeout=5) is False
+        assert monitor_connections[0] is not writer.connection.driver_connection
+    monkeypatch.setattr(ledger, "locked", original)
+    with fixture["db"].connect() as conn:
+        assert conn.execute(select(paid_profiles.c.active)).scalar_one() is False
+    # Recheck the actual irreversible HTTP admission boundary after commit.
+    with pytest.raises(SafetyError, match="paid_dispatched_consent_revoked"):
+        ledger.admit(intent, "a" * 64)
+    assert accounting(fixture)[0][0]["state"] == "LAUNCHING"
+
+
 @pytest.mark.parametrize("change", ["profile", "role", "session", "quote"])
 def test_reserved_worker_rechecks_current_profile_consent_and_session_before_launch(
     fixture, change
