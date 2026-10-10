@@ -15,3 +15,14 @@ Task submissions reject recognized secrets; audit detail is redacted before stor
 The local core retains its own single-user threat model. Neither worktrees nor this API constitute an OS sandbox. The separate runner is restricted to owned fixed fixtures and static parsers, with one mapped core ledger per attempt. Trusted receipt import reads real candidate bytes and the core ledger, recomputes digests and fences every database write. Worker capability is independent of human private-review approval. Database credentials remain in the supervisor and are excluded from the child environment; the worker needs no policy/membership/approval write privileges. Hostile-code isolation, real model execution, costs and all external effects remain unverified/disabled. Leases are never cleared merely because they expired. Unknown STARTING work becomes NEEDS_RECONCILIATION; completed receipt import never reruns the provider. Cancellation is confirmed only with never-started or completed fixed-fixture evidence. See [the runner contract](web-runner.md).
 
 Before private rollout, independently verify actual PostgreSQL concurrency/restart/backups, OIDC provider and secure cookies through the target TLS ingress, active user/session/project revocation, rate and body limits, allowed proxy IPs, log redaction and artifact isolation. Supply a trusted ingress allowlist; `serve.py` rejects wildcard proxy trust. No production security setting, firewall, tunnel or public PC port was changed during implementation.
+
+
+## Offline isolation evidence and live authority
+
+[Launch contracts](provider-isolation.md) reject browser authority, fallback,
+unconfined Grok macOS work, mutable binary/image digests and project hook/MCP
+configuration. Offline probe evidence never satisfies a live capability or paid
+model authorization. Namespace cleanup is independently tested with a setsid
+descendant rather than inferred from leader exit. Trees must remain immutable
+across pinning/launch; hostile host mutation and cgroup quotas are not implemented.
+Provider and generated-code network separation still requires a verified broker.

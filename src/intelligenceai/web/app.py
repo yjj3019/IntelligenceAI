@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from sqlalchemy import select
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from intelligenceai.isolation_contracts import live_readiness
 from intelligenceai.security import clean
 from intelligenceai.web.auth import ServerSessions
 from intelligenceai.web.config import Settings
@@ -233,6 +234,11 @@ def create_app(settings: Settings, *, db=None, testing=False):
             "external_effects": "DISABLED",
             "fixture_execution": "AUTHORIZED" if fixture else "DISABLED",
             "live_model": "NOTRUN",
+            "provider_readiness": [
+                live_readiness(provider, mode)
+                for provider in ("claude", "codex", "grok", "gemini-cli", "antigravity")
+                for mode in ("read_only", "write")
+            ],
         }
 
     @app.post("/api/projects/{project_id}/preview")

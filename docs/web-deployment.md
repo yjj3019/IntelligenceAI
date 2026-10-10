@@ -86,3 +86,14 @@ uv run --frozen --extra web python tests/support/web_fixture.py
 마지막 명령은 `127.0.0.1:4173` 전용 테스트 서버입니다. 실행마다 임시 SQLite와 테스트 사용자, 임시 서명 키를 만들며 인증 우회 endpoint를 제공하지 않습니다. 실제 Authlib client가 합성 issuer의 state·nonce·PKCE·JWT를 검사합니다. 이 fixture는 실제 OIDC/DB 운영 증거가 아니며 배포 image에 포함하지 않습니다. 지원된 전용 테스트 브라우저만 사용합니다. Chromium 설치나 보안 우회가 필요하면 진행하지 않고 차단 사항을 보고합니다.
 
 현재 결과와 남은 검증 항목은 [검증 기록](web-validation.md), 서비스 관계는 [웹 구조](web-architecture.md), API는 [계약 문서](web-api.md), 위협 경계는 [보안 문서](web-security.md)에 있습니다.
+
+
+## Provider backend readiness
+
+This release does not provide a live runner image or an enable-provider setting.
+The internal [Linux executor](provider-isolation.md) is an offline probe only.
+Installing bubblewrap or passing that probe does not authorize paid models or a
+production deployment. Before live rollout, independently verify credentials,
+provider-only egress, budgets, immutable materialization and OS/provider/mode
+capabilities. CI package installation is limited to its ephemeral Linux test job;
+user-PC packages, AppArmor/sysctl changes and privileged fallback are excluded.

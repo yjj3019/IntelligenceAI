@@ -92,6 +92,17 @@ export type Audit = {
   task_id: string | null;
 };
 export type Session = { user: { id: string; name: string }; csrf: string };
+export type ProviderReadiness = {
+  provider: "claude" | "codex" | "grok" | "gemini-cli" | "antigravity";
+  mode: "read_only" | "write";
+  host_os: string;
+  status: "BLOCKED";
+  reasons: string[];
+  live_model: "NOTRUN";
+  os_isolation: "UNVERIFIED";
+  wrapper_attempts: 1;
+  native_retries: "UNVERIFIED";
+};
 export type Connections = {
   execution_enabled: boolean;
   providers: string;
@@ -101,4 +112,5 @@ export type Connections = {
   external_effects: string;
   fixture_execution?: string;
   live_model?: string;
+  provider_readiness?: ProviderReadiness[];
 };

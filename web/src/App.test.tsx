@@ -146,6 +146,60 @@ function privateFetch(
 }
 
 describe("private boundary and failure flows", () => {
+  it("shows server provider blockers in both languages without enabling execution", async () => {
+    history.replaceState({}, "", "/app/connections");
+    const mock = privateFetch();
+    const original = mock.getMockImplementation()!;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/connections"))
+        return new Response(
+          JSON.stringify({
+            ...demoConnections,
+            provider_readiness: [
+              {
+                provider: "grok",
+                mode: "write",
+                host_os: "Darwin",
+                status: "BLOCKED",
+                reasons: [
+                  "grok_macos_write_unsupported",
+                  "paid_model_not_authorized",
+                ],
+                live_model: "NOTRUN",
+                os_isolation: "UNVERIFIED",
+                wrapper_attempts: 1,
+                native_retries: "UNVERIFIED",
+              },
+            ],
+          }),
+        );
+      return original(input, options);
+    });
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", {
+        name: "Provider execution readiness",
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole("table")).toHaveAccessibleName(
+      /All live execution is blocked/,
+    );
+    expect(
+      screen.getByText("Grok macOS write mode is unsupported"),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /Run live/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
+    expect(
+      screen.getByText("Grok의 macOS 파일 변경 모드 미지원"),
+    ).toBeVisible();
+    expect(
+      mock.mock.calls.every(
+        ([, options]) => !options?.method || options.method === "GET",
+      ),
+    ).toBe(true);
+  });
   it("renders confirmed cancellation before invocation without completed steps", async () => {
     history.replaceState({}, "", "/app/task");
     privateFetch(200, {

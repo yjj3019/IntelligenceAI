@@ -234,6 +234,44 @@ def test_csrf_host_origin_cors_and_body_limits(fixture):
     assert "access-control-allow-origin" not in response.headers
 
 
+def test_provider_readiness_is_authorized_read_only_and_never_exposes_paths(fixture):
+    f = fixture
+    path = f["base"] + "/connections"
+    assert f["client"].get(path).status_code == 401
+    f["sign_in"](f["alice"])
+    writes = []
+
+    def observe(_conn, _cursor, statement, _parameters, _context, _many):
+        if statement.lstrip().split()[0].upper() in {"INSERT", "UPDATE", "DELETE"}:
+            writes.append(statement)
+
+    event.listen(f["db"], "before_cursor_execute", observe)
+    try:
+        for _ in range(2):
+            response = f["client"].get(path)
+            assert response.status_code == 200
+            status = response.json()
+            assert status["execution_enabled"] is False
+            reports = status["provider_readiness"]
+            assert len(reports) == 10
+            assert all(
+                row["status"] == "BLOCKED" and row["live_model"] == "NOTRUN" for row in reports
+            )
+            assert all(row["wrapper_attempts"] == 1 for row in reports)
+            assert not any(
+                key in row for row in reports for key in ("argv", "env", "path", "credential_refs")
+            )
+        assert writes == []
+    finally:
+        event.remove(f["db"], "before_cursor_execute", observe)
+    f["sign_in"](f["bob"])
+    assert f["client"].get(path).status_code == 404
+    f["sign_in"](f["alice"])
+    with f["db"].begin() as conn:
+        conn.execute(update(members).where(members.c.user_id == f["alice"]).values(role="revoked"))
+    assert f["client"].get(path).status_code == 404
+
+
 def test_cross_tenant_object_read_logs_artifact_sse_and_mutations(fixture):
     f = fixture
     task_id, _ = submit(f)

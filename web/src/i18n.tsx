@@ -2,6 +2,26 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  Provider: "Provider",
+  Mode: "실행 모드",
+  Status: "상태",
+  "Provider readiness table": "Provider 실행 준비 상태 표",
+  "Provider execution readiness": "Provider 실행 준비 상태",
+  "Offline probe evidence cannot authorize a live provider. Wrapper attempts are capped at one; native retries and billing remain unverified.":
+    "오프라인 probe 증거는 실제 provider 실행 권한이 아닙니다. Wrapper 시도는 1회로 제한하며 native 재시도와 과금은 미검증입니다.",
+  "Server OS, provider and mode are evaluated independently. All live execution is blocked.":
+    "서버 OS·provider·실행 모드를 각각 확인합니다. 실제 실행은 모두 차단되어 있습니다.",
+  "Blocking conditions": "실행 차단 사유",
+  read_only: "읽기 전용",
+  write: "파일 변경",
+  isolation_backend_unsupported: "이 OS의 격리 backend를 지원하지 않음",
+  isolation_backend_unavailable: "격리 backend가 설치되지 않음",
+  isolation_probe_required: "실제 OS 격리 probe 검증 필요",
+  grok_macos_write_unsupported: "Grok의 macOS 파일 변경 모드 미지원",
+  provider_capability_unverified: "해당 provider·모드 capability 미검증",
+  credential_broker_unavailable: "Credential broker 미구성",
+  budget_enforcement_unverified: "비용·호출 예산 강제 미검증",
+  paid_model_not_authorized: "유료 모델 실행 미승인",
   "Cancellation confirmed before invocation. No model or sandbox executed.":
     "실행 호출 전에 취소가 확인됐습니다. 모델이나 sandbox는 실행되지 않았습니다.",
   queued: "대기열 등록됨",
@@ -429,6 +449,18 @@ export type Language = "ko" | "en";
 export const en: Record<keyof typeof ko, string> = Object.fromEntries(
   Object.keys(ko).map((key) => [key, key]),
 ) as Record<keyof typeof ko, string>;
+Object.assign(en, {
+  read_only: "Read only",
+  write: "File changes",
+  isolation_backend_unsupported: "Isolation backend unsupported on this OS",
+  isolation_backend_unavailable: "Isolation backend unavailable",
+  isolation_probe_required: "Actual OS isolation probe required",
+  grok_macos_write_unsupported: "Grok macOS write mode is unsupported",
+  provider_capability_unverified: "Provider and mode capability unverified",
+  credential_broker_unavailable: "Credential broker unavailable",
+  budget_enforcement_unverified: "Invocation and cost enforcement unverified",
+  paid_model_not_authorized: "Paid model execution not authorized",
+});
 export const catalogs: Record<Language, Record<string, string>> = { en, ko };
 export function translate(language: Language, key: string): string {
   return catalogs[language][key] ?? catalogs.en[key] ?? key;

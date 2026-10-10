@@ -2135,7 +2135,11 @@ function WorkspaceApp() {
                     <div className="connection-grid">
                       {connections &&
                         Object.entries(connections)
-                          .filter(([key]) => key !== "execution_enabled")
+                          .filter(
+                            ([key]) =>
+                              key !== "execution_enabled" &&
+                              key !== "provider_readiness",
+                          )
                           .map(([key, value]) => (
                             <article key={key}>
                               <span className="connection-icon">
@@ -2157,6 +2161,63 @@ function WorkspaceApp() {
                       </span>
                     </div>
                   </section>
+                  {connections?.provider_readiness && (
+                    <section className="panel">
+                      <h2>{t("Provider execution readiness")}</h2>
+                      <p className="muted">
+                        {t(
+                          "Offline probe evidence cannot authorize a live provider. Wrapper attempts are capped at one; native retries and billing remain unverified.",
+                        )}
+                      </p>
+                      <div
+                        className="table-scroll"
+                        tabIndex={0}
+                        role="region"
+                        aria-label={t("Provider readiness table")}
+                      >
+                        <table className="readiness-table">
+                          <caption>
+                            {t(
+                              "Server OS, provider and mode are evaluated independently. All live execution is blocked.",
+                            )}
+                          </caption>
+                          <thead>
+                            <tr>
+                              <th scope="col">{t("Provider")}</th>
+                              <th scope="col">{t("Mode")}</th>
+                              <th scope="col">{t("Status")}</th>
+                              <th scope="col">{t("Blocking conditions")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {connections.provider_readiness.map((report) => (
+                              <tr key={`${report.provider}-${report.mode}`}>
+                                <th scope="row">
+                                  {report.provider === "antigravity"
+                                    ? "Antigravity (agy)"
+                                    : report.provider}{" "}
+                                  · {report.host_os}
+                                </th>
+                                <td>{t(report.mode)}</td>
+                                <td>
+                                  <span className="subtle-tag">
+                                    {t(report.status)} · {t(report.live_model)}
+                                  </span>
+                                </td>
+                                <td>
+                                  <ul>
+                                    {report.reasons.map((reason) => (
+                                      <li key={reason}>{t(reason)}</li>
+                                    ))}
+                                  </ul>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
                   <section className="panel">
                     <h2>{t("Deployment prerequisites")}</h2>
                     <p className="muted">

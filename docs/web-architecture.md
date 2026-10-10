@@ -36,3 +36,12 @@ SSE returns one bounded `snapshot` and closes. The browser reconnects at a five-
 KO and EN share `web/src/i18n.tsx`. Initial selection is Korean for a Korean browser locale, otherwise English. Explicit selection overrides it and persists only the language in localStorage. The document language, date/number locale and resolved browser timezone stay aligned. IDs, code, model names, original diffs/logs and user-supplied project/task text are preserved. Fixtures receive localized display strings. Both builds use the same components and catalog.
 
 Implementation references: [Authlib Starlette integration](https://docs.authlib.org/en/stable/oauth2/client/web/starlette.html), [SQLAlchemy locking](https://docs.sqlalchemy.org/en/20/core/selectable.html#sqlalchemy.sql.expression.GenerativeSelect.with_for_update), [FastAPI testing](https://fastapi.tiangolo.com/tutorial/testing/).
+
+
+## Provider isolation boundary
+
+The API returns sanitized readiness reports but never constructs or executes a
+provider command. The separate [offline Linux executor](provider-isolation.md)
+uses a pinned internal manifest and cannot dispatch a live provider. Its evidence
+scope is independent of the PostgreSQL fixed-fixture grant. Credential brokering,
+provider-only egress and billing/resource enforcement remain unavailable.

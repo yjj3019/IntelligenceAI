@@ -27,3 +27,18 @@ LangSmith arrives as a transitive dependency of LangChain core; controller traci
 
 An optional development helper fetches the official Gitleaks release into ignored `.tools`, verifies its published SHA256 and extracts only the named binary. This is separate from live worker permissions. The verified Windows x64 archive SHA256 is `d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e`. The Windows binary was used to scan exact release blobs, while the native task scanner remains UNVERIFIED because Windows process tree enforcement is absent. CI retrieves official Linux and Darwin arm64/x64 assets for actual scanner regressions; Darwin release hashes are additionally pinned in the helper. The installer rejects linked destinations and replaces regular files with a fresh inode.
 
+
+
+## Isolation test dependencies and retained source
+
+The dedicated Ubuntu 22.04 CI job pins official Ubuntu bubblewrap
+`0.6.1-1ubuntu0.3` and records its binary SHA and preinstalled compiler version.
+[Package source](https://packages.ubuntu.com/jammy/bubblewrap). No local user-PC
+backend package is installed. Static probe compilation uses the CI compiler only;
+missing dependencies are BLOCKED, without installing a sandbox workaround.
+
+The unchanged Omnilane Grok runner is retained solely for fake-vendor argv/retry
+tests, from v0.53.0 commit `15d5c99b1de982651af1b5cb00d339319d965661`.
+SHA256 `120910ce341e9bbfebb33f64c7d6ac72e7578fcfe20642016a649f035f0b613b`;
+MIT license and attribution are adjacent to the file. This test asset does not
+introduce a production transport or authentication capability.

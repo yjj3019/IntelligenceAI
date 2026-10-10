@@ -5,6 +5,7 @@ Public CLI/controller/MCP never construct it. LiveGateway has no enable flag.
 """
 
 import json
+import platform
 import re
 import subprocess
 import time
@@ -45,8 +46,15 @@ class PreparedInvocation(Contract):
 
     @model_validator(mode="after")
     def no_authority(self):
-        if self.env or not Path(self.cwd).is_absolute():
-            raise ValueError("credential-free empty env and absolute cwd required")
+        expected_env = (
+            {"OMNILANE_GROK_MAX_ATTEMPTS": "1"}
+            if self.executor == "omnilane" and self.provider == "grok"
+            else {}
+        )
+        if self.env != expected_env or not Path(self.cwd).is_absolute():
+            raise ValueError("fixed credential-free wrapper env and absolute cwd required")
+        if self.provider == "grok" and self.mode == "write" and platform.system() == "Darwin":
+            raise ValueError("Grok macOS write is unsupported; no unconfined fallback")
         if self.executor == "pal" and (self.argv or len(self.messages) != 1):
             raise ValueError("PAL requires one allowlisted MCP message")
         return self
@@ -222,6 +230,9 @@ def prepare(
         argv=argv,
         stdin=redact(request),
         cwd=str(cwd),
+        env={"OMNILANE_GROK_MAX_ATTEMPTS": "1"}
+        if step.executor == "omnilane" and step.provider == "grok"
+        else {},
         deadline=(time.time() if now is None else now) + step.timeout_seconds,
         candidate_digest=candidate_digest,
         messages=messages,

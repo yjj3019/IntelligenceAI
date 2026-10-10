@@ -9,7 +9,7 @@ All `/api` calls require the opaque server session. There are no bearer principa
 | `GET /api/projects` | Current identity's accessible projects |
 | `GET /api/projects/{project}` | Membership and existing members |
 | `PUT /api/projects/{project}/members` | Owner; existing `user_id`, role; no self change/enrollment |
-| `GET /api/projects/{project}/connections` | Sanitized disabled/unverified configuration |
+| `GET /api/projects/{project}/connections` | Sanitized disabled/unverified configuration plus ten read-only provider/mode readiness rows; no paths, argv, environment or credential references |
 | `POST /api/projects/{project}/preview` | Operator/owner; fixed declarative plan, no effect |
 | `GET /api/projects/{project}/tasks` | Up to 100 current tasks |
 | `POST /api/projects/{project}/tasks` | Operator/owner; atomically record BLOCKED task + HELD job |
