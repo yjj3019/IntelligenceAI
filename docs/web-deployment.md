@@ -1,5 +1,11 @@
 # GUI 실행·배포 안내
 
+별도 [Claude 검토 worker](claude-transport.ko.md)는 실제 transport를 구현했지만
+운영 배포와 유료 모델 실행은 아직 검증하지 않았다. 배포 입력은 기존
+PostgreSQL·위임된 cgroup·고정 image·서명된 유료 승인·broker 전용 credential
+fd다. credential이나 OS 설정을 새로 만들거나 바꾸지 않는다. 기존 fixture
+worker와 유료 worker를 같은 실행 권한으로 취급하지 않는다.
+
 공개 소개와 합성 데모는 backend 없이 배포할 수 있습니다. Private 콘솔은 실제 PostgreSQL·OIDC·HTTPS ingress가 필요합니다. 이번 구현에서는 서버 대상이나 외부 인증 정보가 제공되지 않았으므로 실제 private 배포와 해당 환경의 검증을 완료했다고 표시하지 않습니다.
 
 ## 공개 정적 산출물

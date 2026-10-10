@@ -5,6 +5,7 @@ import argparse
 from sqlalchemy import delete, insert, select
 
 from intelligenceai.web.config import Settings
+from intelligenceai.web.paid_store import paid_budgets, paid_reviews
 from intelligenceai.web.service import Problem, bootstrap
 from intelligenceai.web.store import engine, execution_grants, metadata, now, projects
 
@@ -25,6 +26,8 @@ def main():
     db = engine(config.database_url)
     try:
         if args.command == "init-db":
+            # Imports register additive accounting tables; this does not grant paid authority.
+            assert paid_budgets.metadata is metadata and paid_reviews.metadata is metadata
             metadata.create_all(db)
             print("Initial web schema ready. Existing schemas are not automatically migrated.")
         elif args.command == "allow-fixed-fixture":

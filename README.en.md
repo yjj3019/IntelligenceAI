@@ -1,10 +1,15 @@
 # IntelligenceAI
 
+The separate [Claude review worker](docs/claude-transport.md) implements an actual
+HTTP broker, PostgreSQL budget reservation, namespace relay and cgroup cleanup.
+Tests use fake providers. Paid execution, operational deployment and GUI paid
+admission are not complete.
+
 The private console supports [one-time approved synthetic execution](docs/web-approved-vendor.md), with current session/approval rechecks, private results and conservative cancellation/recovery. This fixed fake process uses zero model calls; live providers and OS isolation remain unverified.
 
 [Provider isolation contracts and an offline Linux probe](docs/provider-isolation.md) now separate manifest preparation, OS evidence and live authorization. The connections view shows per-provider/mode blockers. Paid models remain disabled; offline probe evidence cannot authorize or attest a live model.
 
-[Live authority receipt contracts](docs/live-authority.md) verify six role-specific signatures bound to an approval and exact manifest. Even valid receipts return signature evidence only, execution `BLOCKED` and model `NOTRUN`. Actual broker, egress, resource/billing enforcement and one-time invocation reservation still require implementation and operational verification.
+[Live authority receipt contracts](docs/live-authority.md) verify six role-specific signatures bound to an approval and exact manifest. The verifier returns signature evidence only. The separate Claude worker additionally implements broker/namespace/resource/accounting checks; its actual paid operation still requires independently verified deployment inputs and explicit approval.
 
 [한국어](README.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Design coverage](docs/requirements.md)
 

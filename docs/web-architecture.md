@@ -1,5 +1,11 @@
 # Web boundary
 
+The separate [Claude review worker](claude-transport.md) adds a fixed provider
+broker and PostgreSQL paid accounting. It runs outside the HTTP process and
+requires an immutable image, existing delegated cgroup and explicit signed paid
+authority. HTTP paid admission is not implemented. Offline and synthetic runner
+paths retain their existing scope.
+
 The web console is separate from the local CLI/controller. It imports shared redaction and digest utilities, but never exposes the core repository allowlist, SQLite ledger, local locks, stdio MCP or provider dispatch over HTTP.
 
 ```mermaid

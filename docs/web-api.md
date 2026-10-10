@@ -1,5 +1,11 @@
 # Private API v1
 
+There is no paid-review launch route in this API. The separate operator-only
+[Claude worker](claude-transport.md) uses signed server-owned descriptors and
+PostgreSQL accounting. Once imported with current authority and verified
+cleanup, a `review` artifact follows the existing project-authorized artifact
+read path. Browser input never supplies provider credentials or commands.
+
 All `/api` calls require the opaque server session. There are no bearer principal headers or browser-selected actors. Reads and mutations recheck membership; object identifiers do not grant access. Production requires same-origin HTTPS. Mutation requests require an exact `Origin`, JSON content type, `X-CSRF-Token` from `/api/session` and (for ledger mutations) a unique `Idempotency-Key` of at most 128 alphanumeric/`-`/`_` characters. The client preserves the key for retries of the same operation and payload.
 
 | Route | Behavior / role |
