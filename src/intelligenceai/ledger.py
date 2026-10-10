@@ -119,6 +119,7 @@ class Ledger:
         expected_generation: int | None = None,
     ) -> dict:
         authorize_step(step)
+        workspace = str(Path(workspace).resolve())
         key = digest([task_id, step.step_id, attempt])
         with self.transaction():
             task = self.task(task_id)
@@ -324,6 +325,7 @@ class Ledger:
     def write_guard(self, invocation_id: str, generation: int, workspace: str):
         # Hold the ledger transaction through the trusted fixture write. Cancel cannot
         # commit between the authority check and that write. This is not OS containment.
+        workspace = str(Path(workspace).resolve())
         with self.transaction():
             row = self.db.execute(
                 "SELECT * FROM invocations WHERE id=?", (invocation_id,)

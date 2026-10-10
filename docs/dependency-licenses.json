@@ -1,5 +1,23 @@
 [
   {
+    "name": "PyJWT",
+    "version": "2.15.1",
+    "license": "MIT",
+    "source": "https://pypi.org/project/PyJWT/2.15.1/"
+  },
+  {
+    "name": "PyYAML",
+    "version": "6.0.3",
+    "license": "MIT",
+    "source": "https://pypi.org/project/PyYAML/6.0.3/"
+  },
+  {
+    "name": "Pygments",
+    "version": "2.21.0",
+    "license": "BSD-2-Clause",
+    "source": "https://pypi.org/project/Pygments/2.21.0/"
+  },
+  {
     "name": "aiosqlite",
     "version": "0.22.1",
     "license": "License :: OSI Approved :: MIT License",
@@ -228,6 +246,13 @@
     "source": "https://pypi.org/project/pluggy/1.6.0/"
   },
   {
+    "name": "psutil",
+    "version": "7.2.2",
+    "license": "BSD-3-Clause",
+    "source": "https://pypi.org/project/psutil/7.2.2/",
+    "platform": "Darwin only; declared official metadata, not installed on this Windows host"
+  },
+  {
     "name": "pycparser",
     "version": "3.11",
     "license": "BSD-3-Clause",
@@ -252,18 +277,6 @@
     "source": "https://pypi.org/project/pydantic_core/2.41.4/"
   },
   {
-    "name": "Pygments",
-    "version": "2.21.0",
-    "license": "BSD-2-Clause",
-    "source": "https://pypi.org/project/Pygments/2.21.0/"
-  },
-  {
-    "name": "PyJWT",
-    "version": "2.15.1",
-    "license": "MIT",
-    "source": "https://pypi.org/project/PyJWT/2.15.1/"
-  },
-  {
     "name": "pytest",
     "version": "8.4.2",
     "license": "MIT",
@@ -286,12 +299,6 @@
     "version": "312",
     "license": "PSF",
     "source": "https://pypi.org/project/pywin32/312/"
-  },
-  {
-    "name": "PyYAML",
-    "version": "6.0.3",
-    "license": "MIT",
-    "source": "https://pypi.org/project/PyYAML/6.0.3/"
   },
   {
     "name": "referencing",

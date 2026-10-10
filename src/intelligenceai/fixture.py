@@ -30,6 +30,10 @@ def implement(
     profile: str = "answer-v1",
 ) -> dict:
     # Only trusted constant bytes. Requests and worker text are never commands or code.
+    if workspace.is_symlink() or (hasattr(workspace, "is_junction") and workspace.is_junction()):
+        raise SafetyError("fixture workspace is linked")
+    # The writer lease stores canonical roots, including macOS /var -> /private/var.
+    workspace = workspace.resolve(strict=True)
     name = profile_path(profile)
     path = workspace / name
     value = (
@@ -38,8 +42,6 @@ def implement(
         else 42
     )
     with ledger.write_guard(invocation_id, generation, str(workspace)):
-        if workspace.resolve(strict=True) != workspace.absolute():
-            raise SafetyError("fixture workspace is linked")
         try:
             existing = path.lstat()
         except FileNotFoundError:
@@ -80,7 +82,13 @@ def evaluate(workspace: Path, profile: str = "answer-v1") -> bool:
             import json
 
             value = json.loads((workspace / profile_path(profile)).read_text())
-            return type(value) is dict and value == {"enabled": True, "version": 42}
+            return (
+                type(value) is dict
+                and set(value) == {"enabled", "version"}
+                and value["enabled"] is True
+                and type(value["version"]) is int
+                and value["version"] == 42
+            )
         node = ast.parse((workspace / FIXTURE_FILE).read_text())
         return (
             len(node.body) == 1
@@ -106,7 +114,8 @@ def verify(workspace: Path, candidate_id: str, profile: str = "answer-v1") -> Ev
         environment="local",
         exit_code=0 if passed else 1,
         status="PASS" if passed else "FAIL",
-        redacted_log="AST assertion ANSWER == 42 " + ("passed" if passed else "failed"),
+        redacted_log=("AST ANSWER == 42 " if profile == "answer-v1" else "JSON config schema ")
+        + ("passed" if passed else "failed"),
         timestamp=time.time(),
     )
 

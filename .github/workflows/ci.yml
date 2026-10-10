@@ -13,7 +13,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-15, macos-15-intel]
+        include:
+          - os: ubuntu-latest
+            arch: x64
+          - os: windows-latest
+            arch: x64
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
         python: ['3.11', '3.14']
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -32,15 +41,17 @@ jobs:
         run: python -m pip install uv==0.11.11
       - name: Install locked repo-local dependencies
         run: uv sync --frozen --extra dev
-      - name: Retrieve checksum-verified optional Linux scanner
-        if: runner.os == 'Linux'
+      - name: Record actual platform and architecture
+        run: uv run --frozen python scripts/ci_platform.py --expected ${{ matrix.arch }}
+      - name: Retrieve checksum-verified optional POSIX scanner
+        if: runner.os != 'Windows'
         run: |
           python scripts/fetch_gitleaks.py
           echo "$PWD/.tools" >> "$GITHUB_PATH"
       - name: Lint
         run: uv run --frozen ruff check src tests scripts
       - name: Scan exact tracked release blobs
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
         run: uv run --frozen python scripts/scan_release.py
       - name: Format
         run: uv run --frozen ruff format --check src tests scripts
@@ -48,4 +59,6 @@ jobs:
         run: uv run --frozen pytest -q --junitxml=test-results.xml
       - name: Build package
         run: uv build --no-sources --no-build-isolation
+      - name: Install built wheel and smoke entry points
+        run: uv run --frozen python scripts/package_smoke.py
 

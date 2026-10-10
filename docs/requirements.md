@@ -13,16 +13,16 @@
 | 5 검사·리뷰·수리 | AST assertion, 동일 후보 fixture review, reproduced blocker만 2회 수리 | 실제 test/build/lint profile·MCO/PAL 리뷰 UNVERIFIED |
 | 6 최소 7개 레코드 | Task/Step/Invocation/Candidate/Finding/Evidence/Approval typed schema | distributed/multi-user 운영 미구현 |
 | 6 저장·복구 | 실제 SqliteSaver와 별도 FULL/WAL ledger, restart+interrupt/resume 테스트 | Postgres 미도입 |
-| 6 인터페이스 | submit/preview/status/results/approve/reject/cancel/run/recover/dry-run/capabilities CLI | MCP·상태 화면 미구현 |
+| 6 인터페이스 | submit/preview/status/results/approve/reject/cancel/run/recover/dry-run/capabilities CLI | 로컬 stdio MCP 여섯 tool 구현, 상태 화면 미구현 |
 | 7 승인·근거 | exact candidate/action/argv/destination/policy/proof/scope/expiry digest, mutation gate 테스트 | 실제 외부 action 항상 disabled |
 | 7 시크릿 | known-pattern redaction, mandatory pinned Gitleaks contract, sanitized report metadata | native Windows scanner supervision·모든 secret 탐지 UNVERIFIED |
 | 7 격리 | live worker disabled, 링크·위험경로·필터 거부, worktree 한계 명시 | 실제 OS sandbox/credential isolation UNVERIFIED |
 | 7 실패 | reserve/start/effect/receipt/verify crash injection, duplicate/stale 거부, unknown writer 보존 | vendor reconnect·수동 안전 reconciliation 미구현 |
-| 7 timeout/cancel | Linux process identity/start token/group 검증과 ordinary child 테스트 | Windows Job Object·hostile escaped process containment UNVERIFIED |
-| 8 환경 | Windows native fixture, Linux CI, repo-local venv/lock | WSL2/auth 동작 UNVERIFIED, 설정 변경 없음 |
+| 7 timeout/cancel | Linux/Darwin birth identity·generation·group 검증과 ordinary child 테스트 | Windows Job Object·hostile escaped process containment UNVERIFIED |
+| 8 환경 | Windows/Linux·macOS arm64/x64 CI, repo-local venv/lock, 설치 wheel smoke | WSL2/auth 동작 UNVERIFIED, 설정 변경 없음 |
 | 9 단계 P0 | 존재/버전만 확인, official 계약 기록 | paid auth/model probe 생략, live P0 차단 |
 | 9 단계 P1–P3 | fixture 수직 흐름, 제한 수리, 승인·복구 회귀 | 실제 vendor/OS 검증 별도 필요 |
-| 9 단계 P4–P5 | API/외부 executor capability 미노출 | MCP/UI/publish/merge/deploy 미구현 |
+| 9 단계 P4–P5 | API/외부 executor capability 미노출 | stdio MCP 구현, UI/publish/merge/deploy 미구현 |
 | 10 수용 기준 | fixture PASS·실제 미검증 분리, 비용/속도/품질/exactly-once 과장 없음 | 전체 제품 acceptance는 미충족 |
 | 11 대안 | 현재 구조 유지 | scale 필요 시 별도 평가 |
 | 12 산출물 상태 | 코드·문서·lock·테스트·CI | live E2E·API·성능·비용은 UNVERIFIED |
@@ -45,5 +45,5 @@ MCP 추가 구현: 같은 Controller의 로컬 stdio service, operator repositor
 `tests/test_recovery.py`: 5개 crash 경계·중복 receipt·stale generation·unknown cancel·single writer.
 `tests/test_approvals.py`: bytes/untracked/base/policy/evidence/scope/expiry/destination/argv/reject 변경과 복원 후 승인 재사용 차단.
 `tests/test_contracts_security.py`: 경로/DAG/권한 입력·provider 대체·시크릿·scanner report·Gemini/agy/MCO 계약.
-`tests/test_supervisor.py`: Linux ordinary child timeout/cancel, Windows disabled.
+`tests/test_supervisor.py`: Linux/macOS ordinary child timeout/cancel, stale identity·실패 열거·빠른 종료·surviving group, Windows disabled.
 

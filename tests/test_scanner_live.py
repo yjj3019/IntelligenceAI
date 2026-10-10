@@ -10,7 +10,7 @@ from intelligenceai.scanner import GitleaksScanner
 
 @pytest.mark.skipif(
     os.name != "posix" or not shutil.which("gitleaks"),
-    reason="Pinned Linux Gitleaks not installed; runtime gate stays UNVERIFIED",
+    reason="Pinned POSIX Gitleaks not installed; runtime gate stays UNVERIFIED",
 )
 def test_actual_gitleaks_clean_secret_and_ignore_directives():
     scanner = GitleaksScanner()
@@ -35,7 +35,7 @@ def test_windows_scanner_remains_unverified():
 
 @pytest.mark.skipif(
     os.name != "posix" or not shutil.which("gitleaks"),
-    reason="Pinned Linux scanner required; no paid vendor calls",
+    reason="Pinned POSIX scanner required; no paid vendor calls",
 )
 def test_live_scanner_fixture_approval_still_dry_run(repo, tmp_path):
     controller = Controller(tmp_path / "live-scan-state")

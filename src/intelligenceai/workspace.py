@@ -74,6 +74,9 @@ def prepare(repo: Path, root: Path, task_id: str, base: str) -> Path:
 
 
 def files(workspace: Path) -> dict[str, tuple[str, int]]:
+    if workspace.is_symlink() or (hasattr(workspace, "is_junction") and workspace.is_junction()):
+        raise SafetyError("linked workspace root refused")
+    workspace = workspace.resolve(strict=True)
     names = set(git(workspace, "ls-files", "-z", "--cached", "--others").decode().split("\0"))
     names.discard("")
     result = {}

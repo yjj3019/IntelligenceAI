@@ -2,7 +2,7 @@
 
 [한국어](README.md) · [Architecture](docs/architecture.md) · [Security](SECURITY.md) · [Design coverage](docs/requirements.md)
 
-IntelligenceAI is an early local task controller. LangGraph persists workflow position while an independent SQLite ledger owns effect accounting. Git workspaces, candidate fingerprints and exact approval gates connect the workflow. The current executable path is a deterministic fixture. Claude, Codex, Grok, Gemini CLI, Antigravity, Omnilane, MCO and PAL live integrations remain disabled until execution and OS permission contracts are verified.
+IntelligenceAI is an early local task controller. LangGraph persists workflow position while an independent SQLite ledger owns effect accounting. Git workspaces, candidate fingerprints and exact approval gates connect the workflow. The executable paths are declarative static DAGs and trusted deterministic fixture writers. Claude, Codex, Grok, Gemini CLI, Antigravity, Omnilane, MCO and PAL live integrations remain disabled until execution and OS permission contracts are verified.
 
 This is a foundation, not a finished general AI assistant. It does not authenticate tools, call paid models, publish, merge or deploy. Meta AI is excluded.
 
@@ -25,9 +25,9 @@ uv run --frozen intelligenceai --state-dir ../iai-state status TASK_ID
 uv run --frozen intelligenceai --state-dir ../iai-state results TASK_ID
 ```
 
-Use a disposable Git repository with at least one commit and keep state outside it. The controller makes a detached worktree from committed HEAD; it preserves original uncommitted changes. It writes only fixed `answer.py` bytes. `success` writes 42, `repair` repairs 41 to 42, and `exhaust` tests the repair budget. The assertion parses an AST without executing target code. Fixture reviews are deterministic checks, not independent model reviews.
+Use a disposable Git repository with at least one commit and keep state outside it. The controller makes a detached worktree from committed HEAD; it preserves original uncommitted changes. The default profile writes fixed `answer.py` bytes; the registered JSON profile writes fixed `settings.json` bytes. `success` writes 42, `repair` repairs 41 to 42, and `exhaust` tests the repair budget. The assertion parses an AST without executing target code. Fixture reviews are deterministic checks, not independent model reviews.
 
-Without verified Gitleaks 8.30.1 and Linux supervision the result is `UNVERIFIED`, even when assertions pass. Test scanner stubs are not live scanner evidence. Native Windows process supervision is disabled.
+Without verified Gitleaks 8.30.1 and Linux/macOS supervision the result is `UNVERIFIED`, even when assertions pass. Test scanner stubs are not live scanner evidence. Native Windows process supervision is disabled.
 
 ## Approval and recovery
 
@@ -53,5 +53,5 @@ uv run --frozen ruff check src tests
 uv run --frozen ruff format --check src tests
 ```
 
-CI runs fixture, contract, approval, crash and Linux process tree tests. Vendor E2E, API connectivity, Windows/WSL isolation and cost/performance remain `UNVERIFIED`. No external exactly-once or measured quality improvement is claimed. MCP and UI are deferred.
+CI checks CLI/DAG, contracts, approval, recovery, actual stdio SDK, ordinary Linux/macOS process groups, secret scans and installed wheel entry points. Vendor E2E, API connectivity, Windows/WSL isolation and cost/performance remain `UNVERIFIED`. No external exactly-once or measured quality improvement is claimed. UI is deferred. See the [macOS guide](docs/macos.md) for separate Apple Silicon/Intel CI and support boundaries.
 

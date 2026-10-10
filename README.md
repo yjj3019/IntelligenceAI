@@ -4,7 +4,7 @@
 
 IntelligenceAI는 AI 작업의 실행 상태와 변경 후보, 검사 근거, 승인을 연결하는 로컬 제어 프로젝트입니다. LangGraph가 작업 흐름을 저장하고 별도 SQLite 실행 원장이 실제 호출의 시작·결과를 기록합니다. Git 작업 공간과 후보 digest를 사용해 사용자 변경을 보존하고, 확인한 후보에 대해서만 승인을 판단합니다.
 
-현재 실행 가능한 범위는 비용이 발생하지 않는 결정적 fixture입니다. Claude·Codex·Grok·Gemini CLI·Antigravity와 Omnilane·MCO·PAL의 실제 연결은 권한 강제를 확인할 때까지 비활성화했습니다. 범용 AI 제품을 위한 초기 기반이며, 실제 모델로 임의의 개발 요청을 처리하는 완성 제품은 아닙니다. Meta AI는 이번 범위에서 제외했습니다.
+현재 실행 가능한 범위는 비용이 발생하지 않는 정적 검사 DAG와 결정적 fixture 작성입니다. Claude·Codex·Grok·Gemini CLI·Antigravity와 Omnilane·MCO·PAL의 실제 연결은 권한 강제를 확인할 때까지 비활성화했습니다. 범용 AI 제품을 위한 초기 기반이며, 실제 모델로 임의의 개발 요청을 처리하는 완성 제품은 아닙니다. Meta AI는 이번 범위에서 제외했습니다.
 
 ## 설치
 
@@ -19,7 +19,7 @@ uv sync --frozen --extra dev
 .venv\Scripts\intelligenceai.exe capabilities
 ```
 
-Linux에서는 `uv run --frozen intelligenceai capabilities`를 사용합니다. 의존성은 저장소 전용 `.venv`에 설치합니다. 버전·배포 파일 hash는 `uv.lock`, 출처·라이선스·선택 도구는 [도입 기록](docs/dependencies.md)에 정리했습니다. vendor 도구 설치나 인증, 전역 설정 변경은 하지 않습니다.
+Linux·macOS에서는 `uv run --frozen intelligenceai capabilities`를 사용합니다. 의존성은 저장소 전용 `.venv`에 설치합니다. 버전·배포 파일 hash는 `uv.lock`, 출처·라이선스·선택 도구는 [도입 기록](docs/dependencies.md)에 정리했습니다. vendor 도구 설치나 인증, 전역 설정 변경은 하지 않습니다.
 
 ## 하나의 작업 실행
 
@@ -36,7 +36,7 @@ Linux에서는 `uv run --frozen intelligenceai capabilities`를 사용합니다.
 
 `TASK_ID`는 submit 결과의 작업 ID로 바꿉니다. `success`는 `answer.py`에 `ANSWER = 42`를 작성합니다. `repair`는 잘못된 값 41을 재현한 뒤 한 번 수리하고, `exhaust`는 수리 한도를 확인합니다. 대상 코드를 실행하지 않고 Python AST를 검사합니다. fixture 리뷰는 결정적 검사이며 실제 MCO 독립 리뷰가 아닙니다.
 
-Gitleaks 8.30.1과 Linux 프로세스 감독을 확인하지 못한 환경에서는 fixture 검사가 통과해도 `UNVERIFIED`로 남습니다. Windows의 프로세스 트리 종료 경로는 비활성 상태입니다. 테스트용 scanner 주입을 실제 시크릿 검사나 OS 격리의 증거로 사용하지 않습니다.
+Gitleaks 8.30.1과 Linux/macOS 프로세스 감독을 확인하지 못한 환경에서는 fixture 검사가 통과해도 `UNVERIFIED`로 남습니다. Windows의 프로세스 트리 종료 경로는 비활성 상태입니다. 테스트용 scanner 주입을 실제 시크릿 검사나 OS 격리의 증거로 사용하지 않습니다.
 
 ## 승인·취소·복구
 
@@ -62,7 +62,7 @@ uv run --frozen ruff check src tests
 uv run --frozen ruff format --check src tests
 ```
 
-fixture 수직 흐름, 계획·경로 계약, 승인 변경, crash·재시작, 시크릿 마스킹, Linux 자식 프로세스 종료를 테스트합니다. 실제 vendor E2E, 모델 선택, API 연결, Windows/WSL 격리와 성능·비용은 별도 `UNVERIFIED`입니다. 외부 작업의 exactly-once 실행이나 측정하지 않은 품질·속도 향상을 보장하지 않습니다.
+fixture 수직 흐름, 계획·경로 계약, 승인 변경, crash·재시작, 시크릿 마스킹, Linux/macOS 자식 프로세스 종료와 MCP SDK stdio 연결를 테스트합니다. 실제 vendor E2E, 모델 선택, API 연결, Windows/WSL 격리와 성능·비용은 별도 `UNVERIFIED`입니다. 외부 작업의 exactly-once 실행이나 측정하지 않은 품질·속도 향상을 보장하지 않습니다.
 
-실제 연결을 열기 전에는 고정 버전별 caller·프로세스·모델 확인과 OS 권한 경계를 검증해야 합니다. MCP와 상태 화면, 임의 프로젝트의 테스트 실행, production 배포는 이후 범위입니다.
+실제 연결을 열기 전에는 고정 버전별 caller·프로세스·모델 확인과 OS 권한 경계를 검증해야 합니다. 상태 화면, 임의 프로젝트의 테스트 실행, production 배포는 이후 범위입니다. Apple Silicon·Intel 설치와 정확한 CI 검증 범위는 [macOS 안내](docs/macos.md)에 정리했습니다.
 
