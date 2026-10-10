@@ -1,13 +1,14 @@
 # IntelligenceAI
 
-The private console now records [bounded paid-review consent and one-time
-operator requests](docs/paid-admission.md). Requests keep provider `NOTRUN`;
-they do not dispatch a model, reserve funds or supply credentials.
+The private console records [bounded paid-review consent and one-time
+operator requests](docs/paid-admission.md). A [private dispatcher](docs/paid-dispatch.md)
+now connects approved requests, external receipt issuance, atomic budget holds
+and the existing worker. Browser actions supply no credentials or launch flags.
 
 The separate [Claude review worker](docs/claude-transport.md) implements an actual
 HTTP broker, PostgreSQL budget reservation, namespace relay and cgroup cleanup.
-Tests use fake providers. Paid execution, operational deployment and GUI paid
-admission are not complete.
+Tests use fake providers. Actual paid execution, operational signer/credential
+configuration and production deployment remain unverified and disabled.
 
 The private console supports [one-time approved synthetic execution](docs/web-approved-vendor.md), with current session/approval rechecks, private results and conservative cancellation/recovery. This fixed fake process uses zero model calls; live providers and OS isolation remain unverified.
 

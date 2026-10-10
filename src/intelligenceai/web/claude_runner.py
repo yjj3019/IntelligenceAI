@@ -241,7 +241,19 @@ class ClaudeReviewRunner:
             "/bridge.py",
         )
 
-    def run(self, manifest, profile, intent, tokens, prompt, *, session_hash, approved_by, cancel):
+    def run(
+        self,
+        manifest,
+        profile,
+        intent,
+        tokens,
+        prompt,
+        *,
+        session_hash,
+        approved_by,
+        cancel,
+        reserved=False,
+    ):
         profile = ClaudeProfile.model_validate(profile.model_dump())
         if digest(prompt) != intent.prompt_digest or len(prompt.encode()) > 128 * 1024:
             raise SafetyError("paid_prompt_binding_changed")
@@ -273,15 +285,21 @@ class ClaudeReviewRunner:
         ):
             raise SafetyError("paid_manifest_overlay_changed")
         checked = self.verifier.verify(manifest, intent.approval, tokens, now=time.time())
-        self.ledger.reserve(
+        if not reserved:
+            self.ledger.reserve(
+                intent,
+                profile,
+                session_hash=session_hash,
+                approved_by=approved_by,
+                receipt_digest=checked.receipt_set_digest,
+            )
+        # Reserve before touching the runtime. A launch-intent crash never replays.
+        self.ledger.claim_launch(
             intent,
-            profile,
+            receipt_digest=checked.receipt_set_digest,
             session_hash=session_hash,
             approved_by=approved_by,
-            receipt_digest=checked.receipt_set_digest,
         )
-        # Reserve before touching the runtime. A launch-intent crash never replays.
-        self.ledger.claim_launch(intent)
         group = child = None
         gate_read = gate_write = None
         cleanup = completed_local = False

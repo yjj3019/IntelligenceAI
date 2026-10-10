@@ -11,6 +11,14 @@ export const ko = {
   "An operator must provision an existing model profile and budget. Model names, pricing and credentials are never guessed.":
     "운영자가 기존 모델 프로필과 예산을 구성해야 합니다. 모델명·가격·credential을 임의로 정하지 않습니다.",
   "Operator model profile": "운영자 모델 프로필",
+  "Last checked model status": "마지막으로 조회한 모델 상태",
+  "One execution request recorded. Check saved state for worker progress.":
+    "실행 요청 1회가 기록됐습니다. 저장 상태를 조회해 worker 진행 상황을 확인하세요.",
+  "Consent recorded for this exact quote. Check saved state for worker progress.":
+    "이 견적에 대한 동의가 기록됐습니다. 저장 상태를 조회해 worker 진행 상황을 확인하세요.",
+  "Saved worker state": "저장된 worker 상태",
+  "Each launch needs signed controls, verified Linux runtime and separate credential confirmation.":
+    "매 실행에는 서명된 제어 증거, 검증된 Linux 실행환경, 별도 credential 확인이 필요합니다.",
   "Saved profile unavailable": "저장된 프로필을 사용할 수 없음",
   "Choose profile for a new quote": "새 견적에 사용할 프로필 선택",
   "Project / task": "프로젝트 / 작업",

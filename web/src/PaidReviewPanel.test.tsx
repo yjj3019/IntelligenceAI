@@ -224,6 +224,43 @@ const multipleProfiles = ["A", "B", "C"].map((id) => ({
   name: `SYNTHETIC_${id}_ONLY`,
   model: `claude-fixture-${id}`,
 }));
+
+it.each(["UNKNOWN", "RESULT_RECEIVED"])(
+  "reports saved worker %s without claiming NOTRUN or offering replay",
+  async (live_model) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response({
+          ...status,
+          live_model,
+          requests: [
+            {
+              ...record,
+              state: "STALE",
+              live_model,
+              worker_state:
+                live_model === "UNKNOWN" ? "NEEDS_RECONCILIATION" : "IMPORTED",
+            },
+          ],
+        }),
+      ),
+    );
+    render(panel());
+    const saved = await screen.findByRole("status");
+    expect(saved).toHaveTextContent(live_model);
+    expect(
+      screen.getByText(new RegExp(`Last checked model status: ${live_model}`)),
+    ).toBeInTheDocument();
+    expect(saved).not.toHaveTextContent("Provider NOTRUN");
+    expect(
+      screen.getByRole("button", { name: "Choose profile for a new quote" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Request this review once" }),
+    ).toBeDisabled();
+  },
+);
 const savedB = {
   ...record,
   profile_id: "B",

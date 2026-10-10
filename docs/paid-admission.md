@@ -1,11 +1,12 @@
 # Paid review consent and request ledger
 
 The private approval screen now records a server-owned quote, explicit consent,
-and one durable execution request. Every response labels the model `NOTRUN`.
+and one durable execution request. Unstarted requests label the model `NOTRUN`.
 `REQUESTED` means an operator-admission request was recorded; it is not a queued
-provider call, a reserved financial hold, or model execution success. There is
-no request dispatcher or receipt signer in this release. The independent Claude
-worker still requires its six signed control receipts and operator inputs.
+provider call, a reserved financial hold, or model execution success. The
+[private dispatcher](paid-dispatch.md) uses an externally injected receipt issuer.
+The independent Claude worker still requires its six signed control receipts and
+operator inputs; operational configuration is not provisioned here.
 
 No profile is provisioned by default. An operator must supply an existing,
 verified `ClaudeProfile` and corresponding project budget through private
@@ -20,7 +21,8 @@ Only a current project owner may consent and request. It is bound to that exact
 server session; another user or a new login cannot reuse it. The server rechecks
 task evidence/snapshot, cancellation, lease, generation, session, role, active
 profile and available project budget at each mutation. Quotes do not hold funds;
-the worker's existing paid ledger must reserve again immediately before launch.
+the private dispatcher reserves the existing paid ledger atomically with request
+consumption, and the worker claims that matching reservation before launch.
 
 | Route under `.../tasks/{task}/paid-review` | Input / behavior |
 | --- | --- |

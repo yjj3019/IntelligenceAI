@@ -1,5 +1,11 @@
 # GUI 실행·배포 안내
 
+[private dispatcher 계약](paid-dispatch.ko.md)에 요청에서 기존 worker로 이어지는
+코드 경로와 운영 조건을 기록했다. `web_paid_dispatches`는 DB 백업·schema 검토 후
+기존 초기화 절차로 추가한다. 외부 signer와 독립 공개키 역할 설정, 유효한 제어 증거,
+검증된 Linux 환경, 별도로 확인된 기존 credential이 필요하다. 기본 signer나 새
+credential 설정은 제공하지 않는다. 합성 테스트 통과로 실제 유료 실행을 활성화하지 않는다.
+
 별도 [Claude 검토 worker](claude-transport.ko.md)는 실제 transport를 구현했지만
 운영 배포와 유료 모델 실행은 아직 검증하지 않았다. 배포 입력은 기존
 PostgreSQL·위임된 cgroup·고정 image·서명된 유료 승인·broker 전용 credential
@@ -114,7 +120,7 @@ user-PC packages, AppArmor/sysctl changes and privileged fallback are excluded.
 `web.manage init-db` 절차로 추가할 수 있다. 백업과 schema 변경 검토를 먼저
 진행한다. 기본 프로필이나 유료 활성화 환경변수는 추가하지 않는다.
 
-이 GUI는 동의와 요청만 기록한다. 요청 dispatcher, 운영 서명 발급, 별도로
+이 GUI는 동의와 요청만 기록한다. private dispatcher 코드가 연결됐지만 운영 서명 발급, 별도로
 확인된 기존 credential, 검증된 Linux 실행환경과 private HTTPS/OIDC/DB 연결이
 준비되기 전에는 provider를 호출하지 않는다. 계정·credential 생성이나 PC 포트
 외부 개방 없이 로컬 합성 계약과 CI만 검증했다.

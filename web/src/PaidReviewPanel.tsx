@@ -25,7 +25,8 @@ type RequestRecord = {
   state: "QUOTED" | "APPROVED" | "REQUESTED" | "STALE";
   quote: Quote;
   quote_digest: string;
-  live_model: "NOTRUN";
+  live_model: "NOTRUN" | "REQUEST_STARTED" | "RESULT_RECEIVED" | "UNKNOWN";
+  worker_state?: string | null;
 };
 type Status = {
   profiles: {
@@ -38,7 +39,7 @@ type Status = {
   requests: RequestRecord[];
   can_consent: boolean;
   execution_enabled: false;
-  live_model: "NOTRUN";
+  live_model: RequestRecord["live_model"];
   blockers: string[];
   generation: number;
 };
@@ -49,7 +50,9 @@ function checkedStatus(value: Status): Status {
     !Array.isArray(value.profiles) ||
     !Array.isArray(value.requests) ||
     value.execution_enabled !== false ||
-    value.live_model !== "NOTRUN"
+    !["NOTRUN", "REQUEST_STARTED", "RESULT_RECEIVED", "UNKNOWN"].includes(
+      value.live_model,
+    )
   )
     throw new ApiError(503, "paid_status_unavailable");
   return value;
@@ -232,8 +235,9 @@ export function PaidReviewPanel({
       </p>
       <div className="notice">
         <span>
+          {t("Last checked model status")}: {status?.live_model || "NOTRUN"}.{" "}
           {t(
-            "Live model: NOTRUN. Signed controls, verified Linux runtime and separate credential confirmation are still required.",
+            "Each launch needs signed controls, verified Linux runtime and separate credential confirmation.",
           )}
         </span>
       </div>
@@ -334,14 +338,21 @@ export function PaidReviewPanel({
       )}
       {record && (
         <p role="status">
-          {t(
-            record.state === "REQUESTED"
-              ? "One execution request recorded. Provider NOTRUN; operator admission is pending."
-              : expired
-                ? "This paid intent expired. Refresh before preparing a new approval."
-                : record.state === "APPROVED"
-                  ? "Consent recorded for this exact quote. No model has started."
-                  : "Review this fixed quote before approving its cost ceiling.",
+          {record.live_model !== "NOTRUN" ? (
+            <>
+              {t("Saved worker state")}: {record.worker_state} /{" "}
+              {record.live_model}
+            </>
+          ) : (
+            t(
+              record.state === "REQUESTED"
+                ? "One execution request recorded. Check saved state for worker progress."
+                : expired
+                  ? "This paid intent expired. Refresh before preparing a new approval."
+                  : record.state === "APPROVED"
+                    ? "Consent recorded for this exact quote. Check saved state for worker progress."
+                    : "Review this fixed quote before approving its cost ceiling.",
+            )
           )}
         </p>
       )}
@@ -353,6 +364,7 @@ export function PaidReviewPanel({
               busy ||
               !status?.can_consent ||
               !status.profiles.length ||
+              !!record.worker_state ||
               (record.state === "REQUESTED" && !expired)
             }
             onClick={() => {

@@ -12,8 +12,9 @@ private 승인 화면에서 서버가 정한 견적, 명시적 비용 동의, �
 다른 사용자나 새 로그인 session은 이전 승인을 사용할 수 없다.
 
 `REQUESTED`는 운영 admission 요청이 기록되었다는 의미다. provider 실행,
-예산 보류나 모델 성공을 뜻하지 않는다. 이 버전에는 요청 dispatcher와
-서명 발급기가 없으며 모든 응답과 화면에서 실제 모델을 `NOTRUN`으로 표시한다.
+예산 보류나 모델 성공을 뜻하지 않는다. [private dispatcher](paid-dispatch.ko.md)가
+외부 서명 발급기를 주입받아 요청과 예산 예약을 worker에 전달한다.
+상태 조회는 worker 원장에 따라 `NOTRUN`·`REQUEST_STARTED`·`RESULT_RECEIVED`·`UNKNOWN`을 표시한다.
 기존 Claude worker 실행에는 별도의 서명 증거 6개와 검증된 운영 입력이 필요하다.
 
 기본 프로필은 없다. 운영자가 기존에 검증한 모델 프로필과 프로젝트 예산을
@@ -28,7 +29,7 @@ private 승인 화면에서 서버가 정한 견적, 명시적 비용 동의, �
 다음 실행에는 새 generation·증거·승인이 필요하다. 조회와 화면 이동은 승인을
 전송하지 않으며 public 합성 데모에는 유료 승인 화면을 연결하지 않는다.
 
-이 견적은 예산을 보류하지 않는다. 실제 실행 전 기존 paid ledger가 현재
-예산과 운영 권한을 다시 검증·예약해야 한다. 배포·지원 브라우저 QA·운영
-서명 발급·요청 dispatcher 연결·기존 credential의 별도 확인은 후속 단계다.
+이 견적은 예산을 보류하지 않는다. dispatcher가 현재 예산과 운영 권한을
+재검증하고 요청 소비와 예산 예약을 함께 저장한다. 배포·지원 브라우저 QA·운영
+서명 발급 시스템·기존 credential의 별도 확인은 후속 단계다.
 구현 범위와 API·배포 계약은 [영문 안내](paid-admission.md)에 정리했다.

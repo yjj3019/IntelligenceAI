@@ -5,6 +5,7 @@ import json
 import os
 import signal
 import stat
+import time
 from pathlib import Path
 from threading import Event
 
@@ -13,6 +14,7 @@ from intelligenceai.security import SafetyError, canonical
 from intelligenceai.web.claude_contracts import ClaudeProfile, PaidReviewIntent
 from intelligenceai.web.claude_runner import ClaudeReviewRunner
 from intelligenceai.web.live_authority import ReceiptVerifier, unique_object
+from intelligenceai.web.paid_dispatch import run_descriptor, worker_descriptor
 from intelligenceai.web.store import engine
 
 
@@ -37,7 +39,11 @@ def read_operator_json(path, limit, *, private):
 
 def main():
     parser = argparse.ArgumentParser(description="Run one approved tool-free Claude review")
-    parser.add_argument("--descriptor", type=Path, required=True)
+    delivery = parser.add_mutually_exclusive_group(required=True)
+    delivery.add_argument("--descriptor", type=Path)
+    delivery.add_argument(
+        "--request-id", help="private durable dispatch; never replay a started call"
+    )
     parser.add_argument("--backend", type=Path, required=True)
     parser.add_argument("--delegated-cgroup", type=Path, required=True)
     parser.add_argument("--runtime-root", type=Path, required=True)
@@ -58,7 +64,12 @@ def main():
     try:
         if os.name != "posix" or args.credential_fd < 3:
             raise SafetyError("trusted_linux_worker_required")
-        descriptor = read_operator_json(args.descriptor, 128 * 1024, private=True)
+        db = engine(os.environ["IAI_DATABASE_URL"])
+        descriptor = (
+            worker_descriptor(db, args.request_id)
+            if args.request_id
+            else read_operator_json(args.descriptor, 128 * 1024, private=True)
+        )
         if set(descriptor) != {
             "manifest",
             "profile",
@@ -68,13 +79,14 @@ def main():
         }:
             raise SafetyError("invalid_operator_descriptor")
         manifest = LaunchManifest.model_validate_json(canonical(descriptor["manifest"]))
-        profile = ClaudeProfile.model_validate_json(canonical(descriptor["profile"]))
+        ClaudeProfile.model_validate_json(canonical(descriptor["profile"]))
         intent = PaidReviewIntent.model_validate_json(canonical(descriptor["intent"]))
         public_keys = read_operator_json(args.trust_keys, 64 * 1024, private=False)
         signers = {
             name: (entry["control"], entry["public_key"]) for name, entry in public_keys.items()
         }
         verifier = ReceiptVerifier(signers)
+        verifier.verify(manifest, intent.approval, tuple(descriptor["tokens"]), now=time.time())
         # Operator process supplies a sealed/one-use pipe fd. The worker does not
         # discover, generate, copy, save or print any user's existing credential.
         value = os.read(args.credential_fd, 4097)
@@ -82,24 +94,13 @@ def main():
         if not 0 < len(value) <= 4096:
             raise SafetyError("broker_credential_fd_limit")
         credential = value.decode("ascii").strip()
-        db = engine(os.environ["IAI_DATABASE_URL"])
         runner = ClaudeReviewRunner(
             db, args.backend, args.delegated_cgroup, args.runtime_root, verifier, lambda: credential
         )
         cancel = Event()
         for signum in (signal.SIGINT, signal.SIGTERM):
             signal.signal(signum, lambda *_: cancel.set())
-        prompt = runner.ledger.review_prompt(intent)
-        outcome = runner.run(
-            manifest,
-            profile,
-            intent,
-            tuple(descriptor["tokens"]),
-            prompt,
-            session_hash=descriptor["session_hash"],
-            approved_by=intent.approved_by,
-            cancel=cancel,
-        )
+        outcome = run_descriptor(runner, descriptor, cancel, reserved=bool(args.request_id))
         print(canonical(outcome))
     except Exception:
         # Model/transport/cleanup uncertainty is not CANCELLED or a synthetic success.

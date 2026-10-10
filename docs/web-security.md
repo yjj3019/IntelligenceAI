@@ -1,5 +1,14 @@
 # Web security and remaining evidence
 
+The [private dispatcher](paid-dispatch.md) verifies exact externally issued
+statements and rechecks consent/profile/session/project authority after signing.
+Request consumption, budget hold and private delivery commit together. Durable
+worker claim fences duplicate/restarted deliveries; launch/gate/HTTP/import
+recheck revocation. Unknown results retain funds and cannot replay. Dispatcher
+rows and backups contain private session bindings and signed grants; protect
+them as artifacts. No HTTP signer/dispatch/credential endpoint exists. Operational
+signing, credentials, production cgroups and actual models remain unverified.
+
 [Paid request consent](paid-admission.md) binds one server session owner to
 immutable scope/currency/cost limits. It accepts only a provisioned profile ID
 or request ID/digest, never model overrides, actor, credentials, environments,

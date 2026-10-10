@@ -386,7 +386,7 @@ class Service:
                 update(paid_requests)
                 .where(
                     paid_requests.c.task_id == task_id,
-                    paid_requests.c.state.in_(["QUOTED", "APPROVED", "REQUESTED"]),
+                    paid_requests.c.state.in_(["QUOTED", "APPROVED", "REQUESTED", "DISPATCHED"]),
                 )
                 .values(state="REVOKED")
             )
@@ -444,7 +444,7 @@ class Service:
                 update(paid_requests)
                 .where(
                     paid_requests.c.task_id == task_id,
-                    paid_requests.c.state.in_(["QUOTED", "APPROVED", "REQUESTED"]),
+                    paid_requests.c.state.in_(["QUOTED", "APPROVED", "REQUESTED", "DISPATCHED"]),
                 )
                 .values(state="REVOKED")
             )
