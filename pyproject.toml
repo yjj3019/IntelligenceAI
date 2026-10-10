@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "intelligenceai"
+version = "0.1.0"
+description = "Local task control with durable invocation accounting and candidate-bound gates"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = ["langgraph==1.2.14", "langgraph-checkpoint-sqlite==3.1.0", "pydantic==2.12.3", "mcp==1.26.0", "psutil==7.2.2; sys_platform == 'darwin'"]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.2", "ruff==0.14.0", "hatchling==1.27.0"]
+
+[project.scripts]
+intelligenceai = "intelligenceai.cli:main"
+intelligenceai-mcp = "intelligenceai.mcp_stdio:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+

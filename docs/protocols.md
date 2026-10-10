@@ -1,0 +1,19 @@
+# 오프라인 adapter 계약
+
+`protocols.prepare`는 버전별 argv 배열, stdin, 절대 cwd, 비어 있는 최소 env, deadline, 요청 provider/model/effort와 candidate digest를 `PreparedInvocation`에 담습니다. executor와 Omnilane lane은 서로 다른 필드입니다. 모델 selector를 임의 명령으로 해석하지 않습니다. 요청한 effort를 upstream 옵션으로 표현할 근거가 없으면 준비를 거부합니다.
+
+Omnilane v0.53.0은 고정 vendor/model의 background single-shot route와 status/result/cancel argv를 준비합니다. native job ID는 upstream의 날짜·시간·숫자 형식으로만 허용합니다. JSON result는 가용성 metadata입니다. 성공한 metadata를 확인한 뒤 별도의 일반 `jobs result` 호출로 답변을 수집하고 시크릿을 지웁니다. 답변은 `OPAQUE_UPSTREAM_OUTPUT_ONLY`이며 실행 증거가 아닙니다. command exit code 실패를 성공 receipt로 저장하지 않습니다. cancel에는 upstream이 지원하지 않는 JSON 옵션을 붙이지 않습니다. 재시작 시 알려진 RUNNING handle은 status만 조회하며 route를 재실행하지 않습니다. handle 없는 STARTING은 NEEDS_RECONCILIATION으로 남깁니다. caller context와 transport overlay는 만들거나 사람 권한을 자칭하지 않습니다.
+
+MCO v0.12.1은 strict read-only review, stdin, 명시적 agent·scope·timeout과 JSON 결과를 준비합니다. complete/partial/failed와 각 output의 success/failed/timeout/cancelled를 구분합니다. 반환된 alias/provider/model을 요청 selector와 대조합니다. 일치해도 upstream 보고의 일치(`MATCHED_UPSTREAM_REPORT_ONLY`)이며 독립적인 model identity attestation이 아닙니다. raw output은 의견이며 자동 findings나 합의가 아닙니다.
+
+PAL v9.8.2는 codereview의 두 단계 메시지와 continuation을 준비합니다. 2단계도 candidate/generation에 묶인 operation key와 STARTING을 호출 전에 저장하고 전체 model-call 예산 3회에 포함합니다. 호출 후 receipt 이전 crash는 재실행하지 않습니다. 저장된 완료 receipt는 재사용할 수 있습니다. `review_type=internal`, `use_assistant_model=false`는 외부 API expert를 호출하지 않는 workflow(`INTERNAL_WORKFLOW_NO_EXTERNAL_EXPERT`)입니다. 외부 expert 분석을 수행했다고 표시하지 않습니다. chat/clink는 schema에서 거부합니다. continuation 자체는 실행 receipt가 아닙니다.
+
+Gemini JSON의 response/stats와 agy event stream의 conversation_id/result 구조는 별도 parser로 처리합니다. duplicate result, 잘못된 event, 부분 JSON, 대화 ID 혼합은 거부합니다. Gemini 준비는 read_only에 `--approval-mode plan`, write에 `--approval-mode auto_edit`를 사용합니다. 이 옵션은 OS 권한 강제의 증거가 아닙니다. agy headless의 검증된 read-only 옵션은 없으므로 read_only 준비를 거부합니다. write 준비는 upstream의 workspace-write 자동 허용 정책을 전제로 하며 `--mode plan`을 만들어 붙이지 않습니다. 두 adapter의 실제 실행은 권한 경계 미확인으로 계속 비활성 상태입니다. 파싱 성공은 모델 매핑이나 OS 격리 검증이 아닙니다.
+
+공개 `LiveGateway`의 submit/poll/collect/cancel/reconcile은 항상 차단합니다. env·CLI·MCP·capability 보고서를 바꿔 활성화할 수 없습니다. `_ProtocolSession`은 프로젝트 테스트가 직접 구성하는 내부 계약 harness입니다. 공개 service는 이 클래스를 생성하지 않으며 fake transport 선택 필드도 없습니다. 테스트 소유 executable은 실제 argv와 raw stdin을 파싱합니다. PreparedInvocation JSON을 응답 생성의 지름길로 사용하지 않습니다. fake MCP 응답도 테스트에서만 주입합니다. 입력 검사 후 ledger STARTING을 먼저 기록하고, receipt 전 crash는 NEEDS_RECONCILIATION으로 남깁니다. 모든 단계와 대기에 동일한 전체 deadline의 남은 시간만 전달합니다. 만료된 작업은 새 호출을 하지 않으며, 종료가 확인되지 않은 기존 작업은 불명 상태로 남깁니다. rc0 cancel은 process tree 종료를 증명하지 않습니다.
+
+## English
+
+These are pinned offline contracts, not enabled provider integrations. Owned executables parse real argv/stdin. Omnilane metadata and opaque answer collection are separate; recovery queries a known handle without resubmission. Missing handles and ambiguous calls require reconciliation. MCO selector matching validates reported metadata only. PAL phase two has its own durable operation reservation and consumes the shared three-call budget; internal review with the assistant model disabled does not call an external API expert. Every phase receives the remaining whole-task deadline. Gemini plan/auto_edit preparation does not establish an OS sandbox; agy read-only preparation is refused. Live execution, paid model calls and external actions remain disabled.
+
+근거: [Omnilane dispatch](https://github.com/Seraphim0916/omnilane/blob/v0.53.0/scripts/dispatch.sh), [jobs](https://github.com/Seraphim0916/omnilane/blob/v0.53.0/scripts/jobs.sh), [MCO CLI](https://github.com/mco-org/mco/blob/v0.12.1/docs/reference/cli.md), [PAL workflow](https://github.com/BeehiveInnovations/pal-mcp-server/blob/v9.8.2/tools/workflow/workflow_mixin.py), [Gemini headless](https://geminicli.com/docs/cli/headless/), [agy headless](https://antigravity.google/docs/cli/headless/).
