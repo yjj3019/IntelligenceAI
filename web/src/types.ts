@@ -66,17 +66,21 @@ export type Task = {
     core_task_id: string;
     generation: number;
     phase: string;
-    receipt: null | {
-      scope: string;
-      live_model: string;
-      os_sandbox: string;
-      core_state: string;
-      steps: {
-        step_id: string;
-        status: string;
-        result: null | { status: string };
-      }[];
-    };
+    receipt:
+      | null
+      | { kind: "never_started"; never_started: true }
+      | {
+          kind: "completed";
+          scope: string;
+          live_model: string;
+          os_sandbox: string;
+          core_state: string;
+          steps: {
+            step_id: string;
+            status: string;
+            result: null | { status: string };
+          }[];
+        };
   }[];
 };
 export type Audit = {

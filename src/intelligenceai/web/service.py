@@ -125,7 +125,7 @@ class Service:
             result["runs"] = list(
                 reversed(
                     [
-                        dict(r)
+                        dict(r) | {"receipt": self.receipt_view(r["receipt"])}
                         for r in conn.execute(
                             select(
                                 attempts.c.core_task_id,
@@ -141,6 +141,18 @@ class Service:
                 )
             )
             return result
+
+    @staticmethod
+    def receipt_view(value):
+        if value and value.get("never_started") is True:
+            return {"kind": "never_started", "never_started": True}
+        if (
+            value
+            and value.get("scope") == "FIXTURE_STATIC_ONLY"
+            and isinstance(value.get("steps"), list)
+        ):
+            return value | {"kind": "completed"}
+        return None
 
     @staticmethod
     def task_row(conn, project_id, task_id):
@@ -257,8 +269,31 @@ class Service:
             )
             if task["state"] == "CANCELLED":
                 return {"id": task_id, "state": "CANCELLED"}
-            # Only an unclaimed held job can be confirmed synchronously as never started.
-            confirmed = job["state"] in {"HELD", "QUEUED"} and job["lease_token"] is None
+            completed = (
+                conn.execute(
+                    select(attempts).where(
+                        attempts.c.task_id == task_id,
+                        attempts.c.generation == task["generation"],
+                        attempts.c.phase == "RECEIVED",
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            confirmed_complete = bool(
+                job["state"] == "FINISHED"
+                and job["lease_token"] is None
+                and job["generation"] == task["generation"]
+                and completed
+                and completed["receipt"]
+                and completed["receipt"].get("kind", "completed") == "completed"
+                and completed["receipt"].get("scope") == "FIXTURE_STATIC_ONLY"
+            )
+            confirmed = (
+                job["state"] in {"HELD", "QUEUED"} and job["lease_token"] is None
+            ) or confirmed_complete
+            if job["state"] == "FINISHED" and not confirmed_complete:
+                raise Problem(409, "termination_receipt_required")
             state = "CANCELLED" if confirmed else "CANCEL_REQUESTED"
             conn.execute(
                 update(jobs)
@@ -267,7 +302,14 @@ class Service:
             )
             conn.execute(update(tasks).where(tasks.c.id == task_id).values(state=state))
             conn.execute(delete(approvals).where(approvals.c.task_id == task_id))
-            self.record(conn, project_id, actor, "task.cancel", {"state": state}, task_id)
+            self.record(
+                conn,
+                project_id,
+                actor,
+                "task.cancel",
+                {"state": state, "completed_receipt": confirmed_complete},
+                task_id,
+            )
             return {"id": task_id, "state": state}
 
         return self.mutate(

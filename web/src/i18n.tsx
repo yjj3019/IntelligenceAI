@@ -2,6 +2,17 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  "Cancellation confirmed before invocation. No model or sandbox executed.":
+    "실행 호출 전에 취소가 확인됐습니다. 모델이나 sandbox는 실행되지 않았습니다.",
+  queued: "대기열 등록됨",
+  succeeded: "정적 단계 완료",
+  executing: "고정 fixture 실행 중",
+  claimed: "소유권 확보",
+  reserved: "실행 예약",
+  starting: "실행 시작 중",
+  received: "수신 완료",
+  terminated: "종료 확인",
+  EXECUTING: "고정 fixture 실행 중",
   FIXTURE_ONLY_CAPABILITY: "고정 fixture 실행 권한만 설정됨",
   "Run fixed fixture": "고정 fixture 실행",
   "Fixed fixture queued. No paid model or external action is authorized.":

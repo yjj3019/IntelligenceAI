@@ -13,7 +13,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import and_, insert, or_, select, update
 
 from intelligenceai import checkers
 from intelligenceai.security import canonical, clean, digest, require_no_secrets
@@ -144,18 +144,30 @@ class Runner:
                 raise Problem(409, "fixture_execution_grant_required")
         return task, job, mapping
 
-    def claim(self):
-        with self.db.connect() as conn:
-            candidates = list(
-                conn.execute(
-                    select(tasks.c.project_id, tasks.c.id)
-                    .join(jobs, jobs.c.task_id == tasks.c.id)
-                    .where(jobs.c.state == "QUEUED")
-                    .order_by(tasks.c.created_at, tasks.c.id)
-                    .limit(100)
-                )
+    def queued_candidates(self):
+        cursor = None
+        while True:
+            query = (
+                select(tasks.c.project_id, tasks.c.id, tasks.c.created_at)
+                .join(jobs, jobs.c.task_id == tasks.c.id)
+                .where(jobs.c.state == "QUEUED")
             )
-        for project_id, task_id in candidates:
+            if cursor:
+                query = query.where(
+                    or_(
+                        tasks.c.created_at > cursor[0],
+                        and_(tasks.c.created_at == cursor[0], tasks.c.id > cursor[1]),
+                    )
+                )
+            with self.db.connect() as conn:
+                rows = list(conn.execute(query.order_by(tasks.c.created_at, tasks.c.id).limit(100)))
+            if not rows:
+                return
+            yield from rows
+            cursor = (rows[-1].created_at, rows[-1].id)
+
+    def claim(self):
+        for project_id, task_id, _ in self.queued_candidates():
             with self.db.begin() as conn:
                 project = (
                     conn.execute(
@@ -201,6 +213,16 @@ class Runner:
                     or grant["expires_at"] <= now()
                     or (grant["policy_digest"] != project["policy_digest"])
                 ):
+                    conn.execute(update(jobs).where(jobs.c.id == job["id"]).values(state="HELD"))
+                    conn.execute(update(tasks).where(tasks.c.id == task_id).values(state="BLOCKED"))
+                    self.service.record(
+                        conn,
+                        project_id,
+                        task["actor_id"],
+                        "fixture.admission_blocked",
+                        {"reason": "execution_capability_invalid"},
+                        task_id,
+                    )
                     continue
                 token, core_id = secrets.token_hex(32), uid()
                 conn.execute(
@@ -253,6 +275,7 @@ class Runner:
 
     def child(self, phase, claim, descriptor):
         stop = threading.Event()
+        proc = None
 
         def pulse():
             while not stop.wait(max(1, self.lease_seconds // 3)):
@@ -262,31 +285,50 @@ class Runner:
                     return
 
         thread = threading.Thread(target=pulse, daemon=True)
-        thread.start()
         try:
-            result = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "intelligenceai.web.core_bridge",
-                    phase,
-                    str(self.root),
-                    claim.core_task_id,
-                ],
-                input=canonical(descriptor),
-                text=True,
-                encoding="utf-8",
-                env=child_environment(self.root),
-                cwd=self.root,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=90,
-            )
-            if result.returncode:
+            # Process creation is serialized with cancellation and membership revocation.
+            # The durable STARTING intent remains authoritative if this transaction fails.
+            with self.db.begin() as conn:
+                _, job, mapping = self.locked(conn, claim)
+                expected = "CLAIMED" if phase == "prepare" else "STARTING"
+                if phase not in {"prepare", "execute"} or mapping["phase"] != expected:
+                    raise Problem(409, "start_intent_uncertain")
+                if job["cancel_requested"]:
+                    raise Problem(409, "cancellation_pending")
+                proc = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-m",
+                        "intelligenceai.web.core_bridge",
+                        phase,
+                        str(self.root),
+                        claim.core_task_id,
+                    ],
+                    stdin=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    env=child_environment(self.root),
+                    cwd=self.root,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                if phase == "execute":
+                    conn.execute(
+                        update(attempts)
+                        .where(attempts.c.core_task_id == claim.core_task_id)
+                        .values(phase="EXECUTING")
+                    )
+            thread.start()
+            proc.communicate(canonical(descriptor), timeout=90)
+            if proc.returncode:
                 raise Problem(409, "core_receipt_unavailable")
         finally:
             stop.set()
-            thread.join(timeout=2)
+            if thread.ident is not None:
+                thread.join(timeout=2)
+            if proc is not None and proc.poll() is None:
+                proc.kill()  # Only the directly created owned child; no unrelated processes.
+                proc.communicate(timeout=5)
 
     def phase(self, claim, phase):
         with self.db.begin() as conn:
@@ -307,7 +349,9 @@ class Runner:
                 conn.execute(
                     update(attempts)
                     .where(attempts.c.core_task_id == claim.core_task_id)
-                    .values(phase="TERMINATED", receipt={"never_started": True})
+                    .values(
+                        phase="TERMINATED", receipt={"kind": "never_started", "never_started": True}
+                    )
                 )
                 return False
             conn.execute(
@@ -403,6 +447,7 @@ class Runner:
             raise Problem(409, "candidate_bytes_changed")
         return clean(
             {
+                "kind": "completed",
                 "candidate": candidate,
                 "contents": expected,
                 "evidence": evidence,
@@ -420,7 +465,7 @@ class Runner:
         snapshot = self.verified_receipt(claim, descriptor)
         with self.db.begin() as conn:
             task, job, mapping = self.locked(conn, claim, require_current_role=False)
-            if mapping["phase"] not in {"STARTING", "NEEDS_RECONCILIATION"}:
+            if mapping["phase"] not in {"STARTING", "EXECUTING", "NEEDS_RECONCILIATION"}:
                 raise Problem(409, "core_mapping_changed")
             try:
                 self.locked(conn, claim)
@@ -440,7 +485,11 @@ class Runner:
             conn.execute(
                 update(jobs)
                 .where(jobs.c.id == job["id"])
-                .values(state="FINISHED", lease_token=None, lease_expires_at=None)
+                .values(
+                    state="CANCELLED" if job["cancel_requested"] else "FINISHED",
+                    lease_token=None,
+                    lease_expires_at=None,
+                )
             )
             conn.execute(
                 update(tasks)

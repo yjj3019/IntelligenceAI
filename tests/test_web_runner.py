@@ -9,10 +9,11 @@ import pytest
 
 pytest.importorskip("sqlalchemy")
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import event, insert, select, update
 from test_web import INPUT
 from test_web import fixture as shared_web_fixture
 
+from intelligenceai.web.contracts import TaskInput
 from intelligenceai.web.runner import Runner, child_environment
 from intelligenceai.web.service import Problem
 from intelligenceai.web.store import (
@@ -115,6 +116,8 @@ def test_real_core_subprocess_and_private_results(fixture, tmp_path, profile):
     with pytest.raises(Problem) as error:
         f["service"].task(f["bob"], f["project"], tid)
     assert error.value.status == 404
+    assert f["service"].cancel(f["alice"], f["project"], tid, uid())["state"] == "CANCELLED"
+    assert f["service"].recover(f["alice"], f["project"], tid, uid())["generation"] == 2
 
 
 @pytest.mark.parametrize(
@@ -183,14 +186,134 @@ def test_cancel_is_requested_until_child_finished_and_recovery_new_mapping(fixtu
     runner.child("prepare", claim, descriptor)
     runner.phase(claim, "RESERVED")
     runner.phase(claim, "STARTING")
-    assert f["service"].cancel(f["alice"], f["project"], tid, uid())["state"] == "CANCEL_REQUESTED"
     runner.child("execute", claim, descriptor)
+    assert f["service"].cancel(f["alice"], f["project"], tid, uid())["state"] == "CANCEL_REQUESTED"
     assert runner.finish(claim, descriptor) == "CANCELLED"
     assert f["service"].recover(f["alice"], f["project"], tid, uid())["generation"] == 2
     f["service"].run_fixture(f["alice"], f["project"], tid, uid())
     assert runner.run_once() == "READY_FOR_APPROVAL"
     task = f["service"].task(f["alice"], f["project"], tid)
     assert len(task["runs"]) == 2 and len({r["core_task_id"] for r in task["runs"]}) == 2
+
+
+@pytest.mark.parametrize("phase", ["RESERVED", "STARTING"])
+def test_never_started_receipt_is_discriminated_and_recoverable(fixture, tmp_path, phase):
+    f = fixture
+    tid, _ = queued(f)
+    runner = Runner(f["db"], tmp_path / "runner")
+    claim = runner.claim()
+    if phase == "STARTING":
+        assert runner.phase(claim, "RESERVED") is True
+    assert f["service"].cancel(f["alice"], f["project"], tid, uid())["state"] == "CANCEL_REQUESTED"
+    assert runner.phase(claim, phase) is False
+    task = f["service"].task(f["alice"], f["project"], tid)
+    assert task["state"] == "CANCELLED"
+    assert task["runs"][0]["receipt"] == {"kind": "never_started", "never_started": True}
+    assert f["service"].recover(f["alice"], f["project"], tid, uid())["generation"] == 2
+
+
+@pytest.mark.parametrize("invalid", ["expired", "policy"])
+def test_invalid_first_page_cannot_starve_healthy_project(fixture, tmp_path, invalid):
+    f = fixture
+    tid, _ = queued(f)
+    blocked = [tid]
+    for _ in range(99):
+        result = f["service"].submit(f["alice"], f["project"], uid(), TaskInput(**INPUT))
+        blocked.append(result["id"])
+        f["service"].run_fixture(f["alice"], f["project"], result["id"], uid())
+    with f["db"].begin() as conn:
+        policy = conn.execute(
+            select(projects.c.policy_digest).where(projects.c.id == f["other"])
+        ).scalar_one()
+        conn.execute(
+            insert(execution_grants).values(
+                project_id=f["other"],
+                mode="fixed-fixture",
+                policy_digest=policy,
+                expires_at=now() + 3600,
+            )
+        )
+        conn.execute(
+            update(execution_grants)
+            .where(execution_grants.c.project_id == f["project"])
+            .values(
+                **(
+                    {"expires_at": now() - 1}
+                    if invalid == "expired"
+                    else {"policy_digest": "0" * 64}
+                )
+            )
+        )
+        conn.execute(update(tasks).where(tasks.c.id.in_(blocked)).values(created_at=1))
+    healthy = f["service"].submit(f["bob"], f["other"], uid(), TaskInput(**INPUT))["id"]
+    f["service"].run_fixture(f["bob"], f["other"], healthy, uid())
+    runner = Runner(f["db"], tmp_path / "runner")
+    assert runner.claim().task_id == healthy
+    with f["db"].connect() as conn:
+        assert set(
+            conn.execute(select(jobs.c.state).where(jobs.c.task_id.in_(blocked))).scalars()
+        ) == {"HELD"}
+        assert not conn.execute(select(attempts).where(attempts.c.task_id.in_(blocked))).first()
+
+
+def test_finished_without_current_receipt_cannot_claim_cancellation(fixture, tmp_path):
+    f = fixture
+    tid, _ = queued(f)
+    with f["db"].begin() as conn:
+        conn.execute(update(jobs).where(jobs.c.task_id == tid).values(state="FINISHED"))
+    with pytest.raises(Problem) as error:
+        f["service"].cancel(f["alice"], f["project"], tid, uid())
+    assert error.value.code == "termination_receipt_required"
+    assert f["service"].task(f["alice"], f["project"], tid)["state"] == "QUEUED"
+
+
+def test_postgres_finish_cancel_converge_with_real_receipt(fixture, tmp_path):
+    f = fixture
+    if f["db"].dialect.name != "postgresql":
+        pytest.skip("requires actual PostgreSQL separate-connection completion/cancel race")
+    from intelligenceai.web.service import Service
+    from intelligenceai.web.store import engine
+
+    tid, _ = queued(f)
+    runner = Runner(f["db"], tmp_path / "runner")
+    claim = runner.claim()
+    descriptor = runner.descriptor(claim)
+    runner.child("prepare", claim, descriptor)
+    runner.phase(claim, "RESERVED")
+    runner.phase(claim, "STARTING")
+    runner.child("execute", claim, descriptor)
+    url = f["db"].url.render_as_string(hide_password=False)
+    worker_db, api_db = engine(url, testing=True), engine(url, testing=True)
+    barrier = Barrier(2)
+    pids = set()
+
+    def finish():
+        with worker_db.connect() as conn:
+            pids.add(conn.exec_driver_sql("select pg_backend_pid()").scalar_one())
+            barrier.wait(timeout=10)
+        return Runner(worker_db, runner.root).finish(claim, descriptor)
+
+    def cancel():
+        with api_db.connect() as conn:
+            pids.add(conn.exec_driver_sql("select pg_backend_pid()").scalar_one())
+            barrier.wait(timeout=10)
+        return Service(api_db).cancel(f["alice"], f["project"], tid, uid())
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            finished, cancelled = pool.submit(finish), pool.submit(cancel)
+            finished.result(timeout=30)
+            cancelled.result(timeout=30)
+        assert len(pids) == 2
+        task = f["service"].task(f["alice"], f["project"], tid)
+        assert task["state"] == "CANCELLED" and task["runs"][0]["receipt"]["kind"] == "completed"
+        with f["db"].connect() as conn:
+            row = conn.execute(select(jobs).where(jobs.c.task_id == tid)).mappings().one()
+            assert row["state"] == "CANCELLED" and row["lease_token"] is None
+        assert f["service"].recover(f["alice"], f["project"], tid, uid())["generation"] == 2
+    finally:
+        worker_db.dispose()
+        api_db.dispose()
 
 
 def test_secrets_not_inherited_and_candidate_verified_from_bytes(fixture, tmp_path, monkeypatch):
@@ -345,3 +468,144 @@ def test_postgres_separate_connection_races(fixture, tmp_path, race):
     else:
         with f["db"].connect() as conn:
             assert not conn.execute(select(attempts).where(attempts.c.task_id == tid)).first()
+
+
+@pytest.mark.parametrize("change", ["revoke", "cancel", "expire", "token"])
+def test_actual_launch_rechecks_fence_and_current_authority(fixture, tmp_path, monkeypatch, change):
+    f = fixture
+    tid, _ = queued(f)
+    runner = Runner(f["db"], tmp_path / "runner")
+    claim = runner.claim()
+    descriptor = runner.descriptor(claim)
+    # Unit setup stops before any actual core invocation. Popen must remain unreachable.
+    runner.phase(claim, "RESERVED")
+    runner.phase(claim, "STARTING")
+    if change == "cancel":
+        assert (
+            f["service"].cancel(f["alice"], f["project"], tid, uid())["state"] == "CANCEL_REQUESTED"
+        )
+    elif change == "expire":
+        expire(f, tid)
+    else:
+        with f["db"].begin() as conn:
+            if change == "revoke":
+                conn.execute(
+                    update(members)
+                    .where(members.c.project_id == f["project"], members.c.user_id == f["alice"])
+                    .values(role="revoked")
+                )
+            else:
+                conn.execute(update(jobs).where(jobs.c.task_id == tid).values(lease_token="b" * 64))
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("lost authority reached subprocess creation")
+
+    monkeypatch.setattr("intelligenceai.web.runner.subprocess.Popen", forbidden)
+    with pytest.raises(Problem):
+        runner.child("execute", claim, descriptor)
+    if change == "cancel":
+        with pytest.raises(Problem):
+            runner.phase(claim, "STARTING")
+        assert f["service"].task(f["alice"], f["project"], tid)["state"] == "CANCEL_REQUESTED"
+
+
+def test_queued_get_status_logs_sse_and_refresh_have_zero_sql_mutations(fixture):
+    f = fixture
+    tid, _ = queued(f)
+    writes = []
+
+    def capture(_, __, statement, ___, ____, _____):
+        if statement.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            writes.append(statement.split()[0])
+
+    event.listen(f["db"], "before_cursor_execute", capture)
+    try:
+        for _ in range(2):
+            for path in [
+                f["base"] + f"/tasks/{tid}",
+                f["base"] + f"/tasks/{tid}/events",
+                f["base"] + f"/tasks/{tid}/logs",
+                f["base"] + "/connections",
+            ]:
+                assert f["client"].get(path).status_code == 200
+    finally:
+        event.remove(f["db"], "before_cursor_execute", capture)
+    assert writes == []
+    assert f["service"].task(f["alice"], f["project"], tid)["runs"] == []
+
+
+def test_postgres_actual_launch_boundary_and_revocation_share_project_lock(
+    fixture, tmp_path, monkeypatch
+):
+    f = fixture
+    if f["db"].dialect.name != "postgresql":
+        pytest.skip("requires actual PostgreSQL separate-connection launch/revocation race")
+    from intelligenceai.web.store import engine
+
+    tid, _ = queued(f)
+    url = f["db"].url.render_as_string(hide_password=False)
+    runner = Runner(engine(url, testing=True), tmp_path / "runner")
+    revoker = engine(url, testing=True)
+    claim = runner.claim()
+    descriptor = runner.descriptor(claim)
+    runner.phase(claim, "RESERVED")
+    runner.phase(claim, "STARTING")
+    barrier = Barrier(2)
+    launched = []
+    pids = set()
+
+    class Probe:
+        """Launch boundary marker, not a provider receipt or claimed execution success."""
+
+        returncode = 0
+
+        def __init__(self, *args, **kwargs):
+            launched.append(True)
+
+        def communicate(self, *args, **kwargs):
+            return None, None
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr("intelligenceai.web.runner.subprocess.Popen", Probe)
+
+    def start():
+        with runner.db.connect() as conn:
+            pids.add(conn.exec_driver_sql("select pg_backend_pid()").scalar_one())
+            barrier.wait(timeout=10)
+        try:
+            runner.child("execute", claim, descriptor)
+            return True
+        except Problem:
+            return False
+
+    def revoke():
+        with revoker.connect() as conn:
+            pids.add(conn.exec_driver_sql("select pg_backend_pid()").scalar_one())
+            barrier.wait(timeout=10)
+        with revoker.begin() as conn:
+            conn.execute(
+                select(projects).where(projects.c.id == f["project"]).with_for_update()
+            ).one()
+            conn.execute(
+                update(members)
+                .where(members.c.project_id == f["project"], members.c.user_id == f["alice"])
+                .values(role="revoked")
+            )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            started, revoked = pool.submit(start), pool.submit(revoke)
+            admitted = started.result(timeout=15)
+            revoked.result(timeout=15)
+        assert len(pids) == 2 and bool(launched) == admitted
+        with f["db"].connect() as conn:
+            mapping = (
+                conn.execute(select(attempts).where(attempts.c.task_id == tid)).mappings().one()
+            )
+            assert mapping["phase"] == ("EXECUTING" if admitted else "STARTING")
+            assert mapping["receipt"] is None
+    finally:
+        runner.db.dispose()
+        revoker.dispose()

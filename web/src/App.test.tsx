@@ -146,6 +146,106 @@ function privateFetch(
 }
 
 describe("private boundary and failure flows", () => {
+  it("renders confirmed cancellation before invocation without completed steps", async () => {
+    history.replaceState({}, "", "/app/task");
+    privateFetch(200, {
+      state: "CANCELLED",
+      runs: [
+        {
+          core_task_id: "never-started",
+          generation: 1,
+          phase: "TERMINATED",
+          receipt: { kind: "never_started", never_started: true },
+        },
+      ],
+    });
+    render(<App />);
+    expect(
+      await screen.findByText(/Cancellation confirmed before invocation/),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/Static checks verify candidate bytes/),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
+    expect(
+      screen.getByText(/실행 호출 전에 취소가 확인됐습니다/),
+    ).toBeVisible();
+  });
+  it("refreshes SSE artifact changes and rejects late bytes after replacement or recovery", async () => {
+    history.replaceState({}, "", "/app/candidate");
+    const mock = privateFetch();
+    const base = mock.getMockImplementation()!;
+    const streams: Stream[] = [];
+    class Stream {
+      onerror = null;
+      close = vi.fn();
+      snapshot: ((event: MessageEvent) => void) | undefined;
+      constructor() {
+        streams.push(this);
+      }
+      addEventListener(_name: string, handler: (event: MessageEvent) => void) {
+        this.snapshot = handler;
+      }
+    }
+    const original = globalThis.EventSource;
+    vi.stubGlobal("EventSource", Stream);
+    const responses: ((value: Response) => void)[] = [];
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).includes("/artifacts/"))
+        return new Promise<Response>((resolve) => responses.push(resolve));
+      return base(input, options);
+    });
+    const view = render(<App />);
+    try {
+      await screen.findByRole("heading", {
+        name: "Candidate & checks",
+        level: 1,
+      });
+      await waitFor(() => expect(streams).toHaveLength(1));
+      const task = {
+        ...demoTasks[0],
+        id: "task-fixture",
+        project_id: "project-fixture",
+        title: "Updated task",
+        source: "test-fixture",
+        generation: 1,
+        state: "READY_FOR_APPROVAL",
+      };
+      const snapshot = async (digest: string | null, generation = 1) =>
+        act(async () => {
+          streams[0].snapshot?.(
+            new MessageEvent("snapshot", {
+              data: JSON.stringify({
+                ...task,
+                generation,
+                artifacts: digest ? [{ id: "artifact-fixture", digest }] : [],
+              }),
+            }),
+          );
+        });
+      await snapshot("a".repeat(64));
+      await waitFor(() => expect(responses).toHaveLength(1));
+      await snapshot("b".repeat(64));
+      await waitFor(() => expect(responses).toHaveLength(2));
+      await act(async () => responses[0](new Response("stale-candidate")));
+      expect(screen.queryByText("stale-candidate")).not.toBeInTheDocument();
+      await act(async () => responses[1](new Response("current-candidate")));
+      expect(await screen.findByText("current-candidate")).toBeVisible();
+      await snapshot("c".repeat(64));
+      await waitFor(() => expect(responses).toHaveLength(3));
+      await snapshot(null, 2);
+      await act(async () => responses[2](new Response("removed-candidate")));
+      expect(screen.queryByText("removed-candidate")).not.toBeInTheDocument();
+      expect(screen.queryByText("current-candidate")).not.toBeInTheDocument();
+      expect(screen.getByText("No candidate artifact yet")).toBeVisible();
+      expect(
+        mock.mock.calls.filter(([, options]) => options?.method === "POST"),
+      ).toHaveLength(0);
+    } finally {
+      view.unmount();
+      vi.stubGlobal("EventSource", original);
+    }
+  });
   it("queues only an explicit fixed fixture action and labels real static receipts honestly in KO/EN", async () => {
     history.replaceState({}, "", "/app/task");
     const mock = privateFetch(200, {
@@ -155,6 +255,7 @@ describe("private boundary and failure flows", () => {
           generation: 1,
           phase: "RECEIVED",
           receipt: {
+            kind: "completed",
             scope: "FIXTURE_STATIC_ONLY",
             live_model: "NOTRUN",
             os_sandbox: "UNVERIFIED",
@@ -210,13 +311,22 @@ describe("private boundary and failure flows", () => {
       screen.getByRole("button", { name: "고정 fixture 실행" }),
     ).toBeVisible();
   });
-  it("keeps fixture execution disabled without operator capability and throughout the public demo", async () => {
+  it("keeps fixture execution disabled without operator capability", async () => {
     history.replaceState({}, "", "/app/task");
     privateFetch();
     render(<App />);
     expect(
       await screen.findByRole("button", { name: "Run fixed fixture" }),
     ).toBeDisabled();
+  });
+  it("never queues fixtures from the public synthetic demo", async () => {
+    history.replaceState({}, "", "/demo/task?task=sample-review");
+    const mock = vi.spyOn(globalThis, "fetch");
+    render(<App />);
+    expect(
+      await screen.findByRole("button", { name: "Run fixed fixture" }),
+    ).toBeDisabled();
+    expect(mock).not.toHaveBeenCalled();
   });
   it("receipt checks and refresh never submit approval; only explicit retry resends the immutable intent", async () => {
     history.replaceState({}, "", "/app/approvals");

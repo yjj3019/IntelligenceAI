@@ -1,5 +1,11 @@
 # 웹 GUI 검증 기록
 
+## 최종 검토 수정
+
+완료 후 취소와 취소 후 완료는 현재 generation의 검증된 정적 receipt와 lease 종료를 근거로 `CANCELLED`에 수렴합니다. 완료 proof가 없는 `FINISHED`는 취소 완료로 과장하지 않고 거부합니다. 미시작 receipt는 별도 `kind: never_started`로 조회·표시하며 steps를 읽지 않습니다. SSE의 artifact ID·digest·generation 변경은 후보 본문을 무효화하고 지연된 이전 응답을 폐기합니다. 만료·정책 불일치 권한의 100개 작업 뒤에 있는 정상 프로젝트를 같은 claim 호출에서 찾도록 keyset 페이지를 순회합니다.
+
+수정된 frontend는 component/locale/API mock 회귀 32개, lint, typecheck, private/public build를 통과했습니다. 실제 core fixture 완료→취소→복구 2개 profile, 미시작 receipt 및 큐 진행 회귀는 로컬에서 통과했습니다. 이 검증은 실제 모델 실행 또는 OS sandbox 성공을 뜻하지 않습니다. 새 supervisor UI의 지원 브라우저 도구는 현재 없어 실제 브라우저 검증은 NOTRUN입니다. 최종 커밋의 PostgreSQL 별도 pool 완료/취소 경합과 기존 8환경 core matrix 결과는 draft PR의 해당 head SHA CI에서 확인합니다. 최종 배포는 사용자 요청에 따라 제외했습니다.
+
 2026-10-10, Windows의 GUI 전용 checkout에서 Python 3.11.15(win-amd64)·Node 24.15.0(x64)로 확인했습니다. 이 기록은 로컬 검증과 실제 운영 연결을 구분합니다. 합성 데이터만 포함한 정적 Sites 공개 배포를 완료했습니다. private 서버·DB·OIDC 등록은 생성하지 않았으며 유료 모델과 외부 효과를 실행하지 않았습니다.
 
 | 검사 | 로컬 결과 | 범위 |
@@ -33,6 +39,19 @@ Cookie·Authorization 없이 일반 HTML User-Agent로 보낸 독립 HTTP 요청
 
 실제 PostgreSQL은 로컬에 제공되지 않았습니다. 별도 CI의 임시 PostgreSQL 17.6에서 웹 계약 45개가 통과했습니다. 8개 동시 요청의 단일 task/job/receipt, 별도 pool 재연결 및 receipt 조회의 SQL 쓰기 0회도 포함합니다. 기존 8개 OS·Python core matrix를 유지했고 모든 job이 성공했습니다. 검사에 사용하는 합성 토큰은 런타임에서 구성하며 비밀 검사 정책이나 ignore는 완화하지 않았습니다.
 
-CI의 임시 DB 검증은 운영 DB의 장애 재시작·backup 검증이 아닙니다. 실제 OIDC 등록, HTTPS ingress의 Secure cookie, 운영 권한회수, DB backup/암호화, 프록시·rate limit·접근 로그, 컨테이너와 Linux runner 격리는 확인하지 못했습니다. runner는 구현하지 않은 상태로 실행을 거부합니다.
+CI의 임시 DB 검증은 운영 DB의 장애 재시작·backup 검증이 아닙니다. 실제 OIDC 등록, HTTPS ingress의 Secure cookie, 운영 권한회수, DB backup/암호화, 프록시·rate limit·접근 로그, 컨테이너와 Linux runner 격리는 확인하지 못했습니다. runner는 고정 fixture와 정적 검사로 제한되며 실제 모델·외부 dispatch를 거부합니다.
 
 운영 배포에 필요한 값의 이름과 초기화 순서는 [배포 절차](web-deployment.md)에 있습니다. 사용자 또는 부모 작업이 승인한 공개 Linux 대상·기존 DB/OIDC 정보가 제공된 뒤 실제 private 배포와 운영 검증을 진행합니다. 공개 합성 데모의 정적 호스팅은 별도로 완료했습니다.
+
+
+## 고정 fixture supervisor 후속 검증
+
+후속 구현은 HELD 원장과 실제 core DAG의 고정 fixture 실행을 연결합니다. 임의 저장소 코드·shell·vendor CLI·유료 모델·외부 효과는 허용하지 않습니다. 후보는 합성 데이터이며 정적 parser의 PASS를 실제 모델 성공이나 OS 격리 검증으로 표시하지 않습니다. 실제 모델은 NOTRUN, OS 격리와 core secret scanner는 UNVERIFIED입니다. 운영 DB/OIDC/TLS나 최종 배포를 수행하지 않았습니다.
+
+검토 후보 `16eccfa2817311d9bbb5f782dc9ecc25bf62f760`에서 push CI [38055210689](https://github.com/yjj3019/IntelligenceAI/actions/runs/38055210689)와 PR CI [38055213292](https://github.com/yjj3019/IntelligenceAI/actions/runs/38055213292)의 9개 job이 각각 통과했습니다. 실제 임시 PostgreSQL은 59 passed, SQLite는 55 passed·4 skipped, signed loopback HTTP/OIDC/API/supervisor는 1 passed입니다. frontend lint·typecheck·28 tests·private/public build가 통과했고, 정확한 release blob 115개의 Gitleaks 결과는 0건입니다. 이 수치는 해당 검토 후보의 결과입니다.
+
+후보 이후에는 실제 subprocess 생성도 project 잠금 아래 두고 role·capability·generation·lease·취소를 다시 확인합니다. 이 보완의 로컬 집중 회귀 6개와 signed loopback fullstack 1개가 통과했습니다. GET/status/SSE/로그/Refresh에서 SQL INSERT·UPDATE·DELETE가 0회임을 검사합니다. 실제 PostgreSQL의 별도 connection pool로 claim 경쟁·claim/cancel·claim/revocation과 launch/revocation 경계를 시험합니다. launch 경계의 probe는 잠금 순서를 관찰하는 테스트용 marker이며 provider receipt나 모델 실행 성공으로 사용하지 않습니다. 최신 최종 commit의 결과는 draft PR과 해당 SHA의 CI를 기준으로 확인합니다.
+
+로컬 Windows의 깊은 테스트 경로에서는 Git이 `fatal: '$GIT_DIR' too big`을 반환했습니다. 전역 설정을 바꾸지 않고 저장소 내부의 짧은 전용 fixture 경로를 사용했으며 runner는 과도하게 긴 Windows state root를 시작 전에 거부합니다. 실제 subprocess 회귀는 로컬에서 수분이 걸렸지만 동일 검토 후보의 CI web 회귀는 PostgreSQL 21.57초, SQLite 17.96초, loopback fullstack 2.51초로 종료됐습니다. 각 subprocess의 90초 deadline과 owned-child cleanup이 있으며 timeout은 종료 확인으로 과장하지 않습니다.
+
+이번 후속 변경은 지원 테스트 브라우저 도구가 노출되지 않아 실제 브라우저의 모바일·키보드·취소/재시작 재검증은 NOTRUN입니다. 기존 GUI의 브라우저 검증과 새 component/HTTP fullstack 검증을 구분합니다. 브라우저를 설치하거나 보안 설정을 우회하지 않았습니다. 공개 Sites 배포는 이전 버전을 유지하며 이번 최종 배포는 제외했습니다.

@@ -395,7 +395,7 @@ function WorkspaceApp() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [task, setTask] = useState<Task | null>(null);
+  const [task, setTaskState] = useState<Task | null>(null);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [connections, setConnections] = useState<Connections | null>(null);
   const [loading, setLoading] = useState(true);
@@ -438,6 +438,8 @@ function WorkspaceApp() {
   const pending = useRef(false);
   const requestKeys = useRef(new Map<string, string>());
   const requestEpoch = useRef(0);
+  const artifactEpoch = useRef(0);
+  const artifactSelection = useRef("");
   const identityId = useRef<string | null>(null);
   const signingOut = useRef(false);
   const active = current.mode === "private";
@@ -447,6 +449,21 @@ function WorkspaceApp() {
   const canWrite = project?.role === "owner" || project?.role === "operator";
   const canApprove = project?.role === "owner" || project?.role === "approver";
 
+  function setTask(next: Task | null) {
+    const selection = JSON.stringify([
+      next?.project_id,
+      next?.id,
+      next?.generation,
+      next?.artifacts?.[0]?.id,
+      next?.artifacts?.[0]?.digest,
+    ]);
+    if (selection !== artifactSelection.current) {
+      artifactSelection.current = selection;
+      artifactEpoch.current += 1;
+      setArtifact("");
+    }
+    setTaskState(next);
+  }
   function routeIdentity(value = route()) {
     return (
       value.mode + "|" + value.path + "|" + value.project + "|" + value.task
@@ -678,6 +695,7 @@ function WorkspaceApp() {
     let alive = true;
     const epoch = requestEpoch.current;
     const artifactId = task.artifacts[0].id;
+    const candidateEpoch = artifactEpoch.current;
     void fetch(
       "/api/projects/" +
         encodeURIComponent(task.project_id) +
@@ -691,10 +709,19 @@ function WorkspaceApp() {
         if (!response.ok)
           throw new ApiError(response.status, "artifact_unavailable");
         const text = await response.text();
-        if (alive && epoch === requestEpoch.current) setArtifact(text);
+        if (
+          alive &&
+          epoch === requestEpoch.current &&
+          candidateEpoch === artifactEpoch.current
+        )
+          setArtifact(text);
       })
       .catch((err) => {
-        if (alive && epoch === requestEpoch.current) {
+        if (
+          alive &&
+          epoch === requestEpoch.current &&
+          candidateEpoch === artifactEpoch.current
+        ) {
           setError(message(err));
           setArtifact("");
           if (err instanceof ApiError && [401, 403, 404].includes(err.status)) {
@@ -706,7 +733,16 @@ function WorkspaceApp() {
     return () => {
       alive = false;
     };
-  }, [current.page, task?.id, active, revision]);
+  }, [
+    current.page,
+    task?.id,
+    task?.project_id,
+    task?.generation,
+    task?.artifacts?.[0]?.id,
+    task?.artifacts?.[0]?.digest,
+    active,
+    revision,
+  ]);
 
   function keyFor(operation: string, payload: unknown) {
     const fingerprint =
@@ -1715,19 +1751,23 @@ function WorkspaceApp() {
                           <article key={run.core_task_id}>
                             <h3>
                               {t("Generation")} {run.generation} ·{" "}
-                              {t(run.phase)}
+                              {t(run.phase.replaceAll("_", " ").toLowerCase())}
                             </h3>
                             <code className="digest">{run.core_task_id}</code>
                             <p>
-                              {run.receipt
+                              {run.receipt?.kind === "never_started"
                                 ? t(
-                                    "Fixed fixture receipt. Static checks verify candidate bytes; they do not verify a live model or sandbox.",
+                                    "Cancellation confirmed before invocation. No model or sandbox executed.",
                                   )
-                                : t(
-                                    "Receipt pending. Lease expiry does not confirm termination.",
-                                  )}
+                                : run.receipt?.kind === "completed"
+                                  ? t(
+                                      "Fixed fixture receipt. Static checks verify candidate bytes; they do not verify a live model or sandbox.",
+                                    )
+                                  : t(
+                                      "Receipt pending. Lease expiry does not confirm termination.",
+                                    )}
                             </p>
-                            {run.receipt && (
+                            {run.receipt?.kind === "completed" && (
                               <>
                                 <dl className="binding-list">
                                   <div>
@@ -1740,7 +1780,9 @@ function WorkspaceApp() {
                                   </div>
                                   <div>
                                     <dt>{t("Core state")}</dt>
-                                    <dd>{t(run.receipt.core_state)}</dd>
+                                    <dd>
+                                      <Badge state={run.receipt.core_state} />
+                                    </dd>
                                   </div>
                                 </dl>
                                 <ol className="step-list">

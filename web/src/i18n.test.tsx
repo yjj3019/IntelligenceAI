@@ -116,6 +116,24 @@ it("retains language through remount, back navigation and direct links with expl
   ).toBeVisible();
   expect(document.documentElement.lang).toBe("ko");
 });
+it("localizes queue, supervisor and core step states using the rendered badge keys", () => {
+  for (const state of [
+    "QUEUED",
+    "SUCCEEDED",
+    "EXECUTING",
+    "CLAIMED",
+    "RESERVED",
+    "STARTING",
+    "RECEIVED",
+    "TERMINATED",
+    "UNVERIFIED",
+  ]) {
+    const key = state.replaceAll("_", " ").toLowerCase();
+    expect(key in ko).toBe(true);
+    expect(translate("en", key)).toBe(key);
+    expect(translate("ko", key)).not.toBe(key);
+  }
+});
 it("keeps cancellation meanings equivalent in KO and EN", () => {
   expect(ko["cancel requested"]).toContain("요청");
   expect(ko["cancelled"]).toContain("확인 완료");
