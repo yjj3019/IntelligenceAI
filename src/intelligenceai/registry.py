@@ -65,6 +65,9 @@ def registry() -> list[dict]:
 
 def authorize_step(step: Step):
     step = Step.model_validate(step.model_dump())
+    # A mutable capability report or environment variable cannot enable live execution.
+    if step.executor != "fixture":
+        raise SafetyError("live executor dispatch is unconditionally disabled")
     cap = CAPABILITIES.get(step.executor)
     if not cap or not cap.enabled or step.provider not in cap.providers:
         raise SafetyError("executor/provider capability disabled or unverified")

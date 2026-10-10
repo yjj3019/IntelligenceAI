@@ -66,11 +66,11 @@ class Step(Contract):
     step_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
     dependencies: list[str] = Field(default_factory=list)
     role: Literal["implement", "review", "analyze"]
-    lane: Literal["fixture", "omnilane", "mco", "pal"] = "fixture"
+    lane: str = Field(default="fixture", pattern=r"^[a-z][a-z0-9-]{0,63}$")
     executor: str = "fixture"
     provider: str = "fixture"
     model: str = "deterministic-v1"
-    effort: Literal["low", "medium", "high"] = "low"
+    effort: str | None = "low"
     mode: Literal["write", "read_only"]
     allowed_paths: list[str] = Field(min_length=1)
     fallback_allowed: Literal[False] = False

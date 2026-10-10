@@ -8,6 +8,8 @@ This is a foundation, not a finished general AI assistant. It does not authentic
 
 ## Install and run
 
+Version-scoped argv/stdin preparation, separate provider result parsers and offline lifecycle regressions are implemented in `protocols.py`. See [protocol contracts](docs/protocols.md). Production dispatch is unconditionally disabled; public inputs cannot select fake transports or enable the live gate.
+
 Use Python 3.11+, Git, and an already installed uv. Dependencies and hashes are fixed in `uv.lock`; sources and licenses are in [dependencies](docs/dependencies.md).
 
 ```sh

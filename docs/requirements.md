@@ -29,6 +29,8 @@
 
 ## 실제 P0 관찰
 
+추가 구현: 버전별 PreparedInvocation, Omnilane jobs argv, MCO partial 결과, PAL codereview 다단계 메시지, Gemini/agy 별도 parser와 테스트 전용 lifecycle harness를 저장했습니다. 공개 live 실행은 불변 차단합니다. [현재 계약](protocols.md)과 `tests/test_protocols.py`를 대조합니다.
+
 2026-10-10에 프로젝트 안에서 명령 존재와 버전을 확인했습니다. Git 2.54.0.windows.1, Python 3.14.4, uv 0.11.11, Claude Code 2.1.296, Codex CLI 0.162.0, Grok 1.0.50입니다. Omnilane/MCO/PAL/Gitleaks는 PATH에서 발견하지 못했습니다. 광범위 홈/다른 앱 스캔, 인증 변경, 실제 모델 호출, doctor/detect, OS 보안 설정 변경은 하지 않았습니다.
 
 `gh auth status`는 기존 인증이 유효하지 않음을 보고했습니다. 연결된 GitHub 도구는 대상 저장소 읽기/쓰기 권한을 확인했습니다. 원격은 commit/ref가 없는 empty repo였으므로 최소 README main bootstrap 후 구현 브랜치·draft PR 전략을 사용했습니다. 기존 사용자 파일은 없었으며 다른 프로젝트를 수정하지 않았습니다.
