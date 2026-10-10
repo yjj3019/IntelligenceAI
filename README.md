@@ -1,13 +1,14 @@
 # IntelligenceAI
 
-[유료 검토 승인·요청 화면](docs/paid-admission.ko.md)을 추가했다. 기존 운영
-프로필의 비용 상한을 확인하고 승인·요청 1회를 기록한다. 운영 admission과
-credential 확인이 없으면 실제 모델은 `NOTRUN`이다.
+[유료 검토 승인·요청 화면](docs/paid-admission.ko.md)과
+[private dispatcher](docs/paid-dispatch.ko.md)를 연결했다. 확정 요청, 외부 서명 발급,
+예산 예약을 기존 worker 경로로 전달한다. 브라우저는 credential이나 실행 플래그를
+제공하지 않는다. 운영 서명·credential 확인과 실제 모델 검증 전에는 실행을 차단한다.
 
 [Claude 읽기 전용 transport](docs/claude-transport.ko.md)를 별도 Linux worker에
 추가했다. 실제 HTTP broker·PostgreSQL 예산 예약·namespace relay·cgroup 종료
-검사를 구현했다. 검증에는 가짜 provider를 사용하며 실제 유료 호출·운영 배포와
-GUI 유료 실행 admission은 아직 완료하지 않았다.
+검사를 구현했다. 검증에는 가짜 provider를 사용한다. 실제 유료 호출, 운영 서명·credential
+설정과 production 배포는 검증하지 않았다.
 
 승인된 고정 fake 프로세스의 DB 일회성 예약·실행 직전 권한 검사·private 결과·취소/복구 경로는 [합성 vendor 실행 계약](docs/web-approved-vendor.md)에 정리했습니다. 모델 호출은 0회이며 실제 provider와 OS 격리는 미검증입니다.
 

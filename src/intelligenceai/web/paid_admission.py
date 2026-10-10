@@ -13,6 +13,7 @@ from intelligenceai.web.store import (
     paid_budgets,
     paid_profiles,
     paid_requests,
+    paid_reviews,
     sessions,
     tasks,
     uid,
@@ -43,7 +44,9 @@ class PaidAdmission:
     def public(row):
         return {
             "id": row["id"],
-            "state": row["state"]
+            "state": "REQUESTED"
+            if row["state"] == "DISPATCHED"
+            else row["state"]
             if row["state"] in {"QUOTED", "APPROVED", "REQUESTED"}
             else "STALE",
             "quote": row["quote"],
@@ -170,6 +173,25 @@ class PaidAdmission:
             for row in rows:
                 quote = row["quote"]
                 value = self.public(row)
+                review = conn.execute(
+                    select(paid_reviews.c.state).where(
+                        paid_reviews.c.id == row["id"],
+                        paid_reviews.c.project_id == project_id,
+                        paid_reviews.c.task_id == task_id,
+                        paid_reviews.c.actor_id == actor,
+                        paid_reviews.c.generation == quote["generation"],
+                    )
+                ).scalar_one_or_none()
+                value["worker_state"] = review
+                value["live_model"] = (
+                    "NOTRUN"
+                    if review is None or review in {"RESERVED", "TERMINATED"}
+                    else "REQUEST_STARTED"
+                    if review == "STARTED"
+                    else "RESULT_RECEIVED"
+                    if review in {"SETTLED", "IMPORTED"}
+                    else "UNKNOWN"
+                )
                 active_profile = (
                     conn.execute(
                         select(paid_profiles).where(
@@ -208,7 +230,14 @@ class PaidAdmission:
                 "generation": task["generation"],
                 "can_consent": role == "owner",
                 "execution_enabled": False,
-                "live_model": "NOTRUN",
+                "live_model": next(
+                    (
+                        r["live_model"]
+                        for r in requests
+                        if r["quote"]["generation"] == task["generation"] and r["worker_state"]
+                    ),
+                    "NOTRUN",
+                ),
                 "blockers": ([] if profiles else ["paid_operator_profile_required"]) + BLOCKERS,
             }
 
@@ -222,7 +251,8 @@ class PaidAdmission:
             consumed = (
                 conn.execute(
                     select(paid_requests.c.id).where(
-                        paid_requests.c.task_id == task_id, paid_requests.c.state == "REQUESTED"
+                        paid_requests.c.task_id == task_id,
+                        paid_requests.c.state.in_(["REQUESTED", "DISPATCHED"]),
                     )
                 )
                 .scalars()
@@ -344,7 +374,8 @@ class PaidAdmission:
             if state == "REQUESTED":
                 for other in conn.execute(
                     select(paid_requests).where(
-                        paid_requests.c.task_id == task_id, paid_requests.c.state == "REQUESTED"
+                        paid_requests.c.task_id == task_id,
+                        paid_requests.c.state.in_(["REQUESTED", "DISPATCHED"]),
                     )
                 ).mappings():
                     if other["quote"]["generation"] == task["generation"]:

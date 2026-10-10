@@ -3,13 +3,16 @@
 The [paid consent/request ledger](paid-admission.md) adds two PostgreSQL tables
 for privately provisioned model profiles and session-bound quotes. The same
 HTTP service records explicit consent and one request per generation, without
-executing repository code or provider CLIs. Operator dispatch/receipt issuance
-remain absent; actual worker admission must recheck and reserve independently.
+executing repository code or provider CLIs. The [private dispatcher](paid-dispatch.md)
+consumes a requested quote, injects external receipt issuance and atomically
+reserves the paid ledger with a private durable delivery. The existing separate
+worker consumes the reservation once and rechecks authority before launch/HTTP.
+Operational signing/credential/runtime configuration remains independently required.
 
 The separate [Claude review worker](claude-transport.md) adds a fixed provider
 broker and PostgreSQL paid accounting. It runs outside the HTTP process and
 requires an immutable image, existing delegated cgroup and explicit signed paid
-authority. HTTP paid admission is not implemented. Offline and synthetic runner
+authority. No HTTP route launches the paid worker. Offline and synthetic runner
 paths retain their existing scope.
 
 The web console is separate from the local CLI/controller. It imports shared redaction and digest utilities, but never exposes the core repository allowlist, SQLite ledger, local locks, stdio MCP or provider dispatch over HTTP.

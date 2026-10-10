@@ -18,6 +18,9 @@ from intelligenceai.web.store import (
     jobs,
     now,
     paid_budgets,
+    paid_dispatches,
+    paid_profiles,
+    paid_requests,
     paid_reviews,
     projects,
     sessions,
@@ -93,9 +96,52 @@ class PaidLedger:
         ):
             raise SafetyError("paid_authority_changed")
         self.service.check_snapshot(conn, task)
+        if check_current:
+            dispatched = (
+                conn.execute(
+                    select(
+                        paid_dispatches.c.quote_digest,
+                        paid_requests,
+                        paid_profiles.c.profile,
+                        paid_profiles.c.active,
+                    )
+                    .join(paid_requests, paid_requests.c.id == paid_dispatches.c.request_id)
+                    .join(paid_profiles, paid_profiles.c.id == paid_requests.c.profile_id)
+                    .where(paid_dispatches.c.invocation_id == intent.invocation_id)
+                )
+                .mappings()
+                .first()
+            )
+            if dispatched:
+                self.service.authorize(conn, approval.actor_id, approval.project_id, {"owner"})
+                if (
+                    dispatched["state"] != "DISPATCHED"
+                    or not dispatched["active"]
+                    or dispatched[paid_requests.c.quote_digest]
+                    != dispatched[paid_dispatches.c.quote_digest]
+                    or digest(dispatched["quote"]) != dispatched[paid_dispatches.c.quote_digest]
+                    or dispatched["session_hash"] != session_hash
+                    or dispatched["actor_id"] != approval.actor_id
+                    or dispatched["project_id"] != approval.project_id
+                    or dispatched["task_id"] != approval.task_id
+                    or ClaudeProfile.model_validate(dispatched["profile"]).binding
+                    != intent.profile_digest
+                ):
+                    raise SafetyError("paid_dispatched_consent_revoked")
         return project, task, job
 
     def reserve(self, intent, profile, *, session_hash, approved_by, receipt_digest):
+        with self.db.begin() as conn:
+            self.reserve_in(
+                conn,
+                intent,
+                profile,
+                session_hash=session_hash,
+                approved_by=approved_by,
+                receipt_digest=receipt_digest,
+            )
+
+    def reserve_in(self, conn, intent, profile, *, session_hash, approved_by, receipt_digest):
         intent = PaidReviewIntent.model_validate(intent.model_dump())
         profile = ClaudeProfile.model_validate(profile.model_dump())
         if intent.profile_digest != profile.binding:
@@ -106,59 +152,58 @@ class PaidLedger:
             profile.reservation > intent.budget_microusd
         ):
             raise SafetyError("paid_budget_insufficient")
-        with self.db.begin() as conn:
-            self.locked(conn, intent, session_hash, approved_by)
-            if conn.execute(
-                select(paid_reviews.c.id).where(
-                    paid_reviews.c.task_id == intent.approval.task_id,
-                    paid_reviews.c.generation == intent.approval.generation,
-                )
-            ).first():
-                raise SafetyError("paid_invocation_already_reserved")
-            budget = (
-                conn.execute(
-                    select(paid_budgets)
-                    .where(paid_budgets.c.project_id == intent.approval.project_id)
-                    .with_for_update()
-                )
-                .mappings()
-                .first()
+        self.locked(conn, intent, session_hash, approved_by)
+        if conn.execute(
+            select(paid_reviews.c.id).where(
+                paid_reviews.c.task_id == intent.approval.task_id,
+                paid_reviews.c.generation == intent.approval.generation,
             )
-            if (
-                not budget
-                or budget["expires_at"] <= now()
-                or (
-                    budget["policy_digest"] != profile.policy_digest
-                    or budget["held_microusd"] + budget["spent_microusd"] + profile.reservation
-                    > budget["limit_microusd"]
-                )
-            ):
-                raise SafetyError("paid_project_budget_unavailable")
+        ).first():
+            raise SafetyError("paid_invocation_already_reserved")
+        budget = (
             conn.execute(
-                update(paid_budgets)
+                select(paid_budgets)
                 .where(paid_budgets.c.project_id == intent.approval.project_id)
-                .values(held_microusd=budget["held_microusd"] + profile.reservation)
+                .with_for_update()
             )
-            conn.execute(
-                insert(paid_reviews).values(
-                    id=intent.invocation_id,
-                    project_id=intent.approval.project_id,
-                    task_id=intent.approval.task_id,
-                    generation=intent.approval.generation,
-                    actor_id=intent.approval.actor_id,
-                    session_hash=session_hash,
-                    approved_by=approved_by,
-                    intent=intent.model_dump(mode="json"),
-                    intent_digest=intent.binding,
-                    receipt_digest=receipt_digest,
-                    state="RESERVED",
-                    hold_microusd=profile.reservation,
-                    revoked=False,
-                    created_at=now(),
-                )
+            .mappings()
+            .first()
+        )
+        if (
+            not budget
+            or budget["expires_at"] <= now()
+            or (
+                budget["policy_digest"] != profile.policy_digest
+                or budget["held_microusd"] + budget["spent_microusd"] + profile.reservation
+                > budget["limit_microusd"]
             )
+        ):
+            raise SafetyError("paid_project_budget_unavailable")
+        conn.execute(
+            update(paid_budgets)
+            .where(paid_budgets.c.project_id == intent.approval.project_id)
+            .values(held_microusd=budget["held_microusd"] + profile.reservation)
+        )
+        conn.execute(
+            insert(paid_reviews).values(
+                id=intent.invocation_id,
+                project_id=intent.approval.project_id,
+                task_id=intent.approval.task_id,
+                generation=intent.approval.generation,
+                actor_id=intent.approval.actor_id,
+                session_hash=session_hash,
+                approved_by=approved_by,
+                intent=intent.model_dump(mode="json"),
+                intent_digest=intent.binding,
+                receipt_digest=receipt_digest,
+                state="RESERVED",
+                hold_microusd=profile.reservation,
+                revoked=False,
+                created_at=now(),
+            )
+        )
 
-            self.event(conn, intent, "paid_review_reserved", {"held_microusd": profile.reservation})
+        self.event(conn, intent, "paid_review_reserved", {"held_microusd": profile.reservation})
 
     def admit(self, intent, request_digest):
         """Commit STARTED before HTTP. Any ambiguous send holds funds; never auto-replay."""
@@ -209,7 +254,7 @@ class PaidLedger:
 
             self.event(conn, intent, "paid_http_admitted", {"request_digest": request_digest})
 
-    def claim_launch(self, intent):
+    def claim_launch(self, intent, *, receipt_digest=None, session_hash=None, approved_by=None):
         with self.db.begin() as conn:
             conn.execute(
                 select(projects)
@@ -229,6 +274,9 @@ class PaidLedger:
             if (
                 row["revoked"]
                 or row["state"] != "RESERVED"
+                or (receipt_digest is not None and row["receipt_digest"] != receipt_digest)
+                or (session_hash is not None and row["session_hash"] != session_hash)
+                or (approved_by is not None and row["approved_by"] != approved_by)
                 or row["intent_digest"] != intent.binding
                 or digest(row["intent"]) != intent.binding
             ):

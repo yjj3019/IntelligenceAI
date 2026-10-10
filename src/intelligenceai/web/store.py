@@ -200,6 +200,17 @@ paid_requests = Table(
     Column("created_at", BigInteger, nullable=False),
 )
 
+paid_dispatches = Table(
+    "web_paid_dispatches",
+    metadata,
+    Column("request_id", ForeignKey(paid_requests.c.id), primary_key=True),
+    Column("invocation_id", ForeignKey(paid_reviews.c.id), nullable=False, unique=True),
+    Column("descriptor", JSON, nullable=False),
+    Column("descriptor_digest", String(64), nullable=False),
+    Column("quote_digest", String(64), nullable=False),
+    Column("created_at", BigInteger, nullable=False),
+)
+
 artifacts = Table(
     "web_artifacts",
     metadata,

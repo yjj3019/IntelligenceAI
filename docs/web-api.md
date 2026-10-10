@@ -1,8 +1,12 @@
 # Private API v1
 
 The private console additionally records [paid review consent and one-time
-operator-admission requests](paid-admission.md). These requests never dispatch a
-model, reserve funds or generate control receipts; live model remains `NOTRUN`.
+operator-admission requests](paid-admission.md). Browser mutations record only
+consent and one request. The separate [private dispatcher](paid-dispatch.md)
+consumes requests with external signing and atomic holds; HTTP does not launch
+provider CLIs. Authorized reads show durable worker state and distinguish
+`NOTRUN`, `REQUEST_STARTED`, `RESULT_RECEIVED` and `UNKNOWN`, without descriptors,
+session hashes or signatures. Result receipt is not a model correctness claim.
 
 There is no paid-review launch route in this API. The separate operator-only
 [Claude worker](claude-transport.md) uses signed server-owned descriptors and
