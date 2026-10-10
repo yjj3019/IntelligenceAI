@@ -59,6 +59,7 @@ export type Task = {
   destination_id: "private-review";
   execution_enabled: boolean;
   model_calls: number | null;
+  local_cli_invocations?: number | null;
   source: string;
   artifacts?: Artifact[];
   approval?: Binding | null;

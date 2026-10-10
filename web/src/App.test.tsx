@@ -133,7 +133,12 @@ function privateFetch(
       else if (path.endsWith("/audit")) body = demoAudit;
       else if (path.endsWith("/connections")) body = demoConnections;
       else if (path.endsWith("/local-cli"))
-        body = { profiles: [], requests: [], can_consent: true, generation: task.generation };
+        body = {
+          profiles: [],
+          requests: [],
+          can_consent: true,
+          generation: task.generation,
+        };
       else if (path.endsWith("/paid-review"))
         body = {
           profiles: [],
@@ -159,6 +164,65 @@ function privateFetch(
 }
 
 describe("private boundary and failure flows", () => {
+  it.each(["first", "last"])(
+    "selects candidate by kind with CLI result %s and displays unknown native calls",
+    async (order) => {
+      history.replaceState({}, "", "/app/candidate");
+      const candidate = {
+        id: "candidate-artifact",
+        name: "candidate.json",
+        kind: "candidate",
+        digest: "a".repeat(64),
+      };
+      const result = {
+        id: "cli-artifact",
+        name: "Private review",
+        kind: "cli-result",
+        digest: "b".repeat(64),
+      };
+      const mock = privateFetch(200, {
+        state: "CLI_COMPLETED",
+        model_calls: null,
+        local_cli_invocations: 1,
+        artifacts:
+          order === "first" ? [result, candidate] : [candidate, result],
+      });
+      const base = mock.getMockImplementation()!;
+      mock.mockImplementation(async (input, options) =>
+        String(input).includes("/artifacts/")
+          ? new Response("SYNTHETIC_CANDIDATE_ONLY")
+          : base(input, options),
+      );
+      render(<App />);
+      await screen.findByText("SYNTHETIC_CANDIDATE_ONLY");
+      expect(
+        screen.getByText("Native internal model calls are unknown."),
+      ).toBeVisible();
+      expect(
+        mock.mock.calls
+          .filter(([input]) => String(input).includes("/artifacts/"))
+          .every(([input]) => String(input).endsWith("/candidate-artifact")),
+      ).toBe(true);
+      fireEvent.click(screen.getByRole("link", { name: /^Overview$/ }));
+      const modelCard = (await screen.findByText("Model calls")).closest(
+        "article",
+      );
+      expect(modelCard).toHaveTextContent("Unknown");
+      expect(modelCard).toHaveTextContent("Local CLI invocations: 1");
+      expect(modelCard).not.toHaveTextContent("Live execution is disabled");
+    },
+  );
+
+  it("does not display zero CLI starts for an unresolved launch", async () => {
+    history.replaceState({}, "", "/app");
+    privateFetch(200, { model_calls: null, local_cli_invocations: null });
+    render(<App />);
+    const modelCard = (await screen.findByText("Model calls")).closest(
+      "article",
+    );
+    expect(modelCard).toHaveTextContent("Local CLI invocations: Unknown");
+  });
+
   function approvedVendor(
     taskOverrides: Partial<Task> = {},
     authorized = true,
@@ -438,7 +502,16 @@ describe("private boundary and failure flows", () => {
               data: JSON.stringify({
                 ...task,
                 generation,
-                artifacts: digest ? [{ id: "artifact-fixture", digest }] : [],
+                artifacts: digest
+                  ? [
+                      {
+                        id: "artifact-fixture",
+                        kind: "candidate",
+                        name: "candidate.json",
+                        digest,
+                      },
+                    ]
+                  : [],
               }),
             }),
           );

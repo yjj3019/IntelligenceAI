@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, message, mutation } from "./api";
 import { useLocale } from "./i18n";
+import type { Artifact } from "./types";
 
 type Usage = {
   measured_at: number | null;
@@ -78,12 +79,14 @@ export function LocalCLIPanel({
   taskId,
   generation,
   csrf,
+  artifacts = [],
   onAuthorityLost,
 }: {
   projectId: string;
   taskId: string;
   generation: number;
   csrf: string;
+  artifacts?: Artifact[];
   onAuthorityLost: (status: number) => void;
 }) {
   const { t, formatDate } = useLocale();
@@ -91,6 +94,10 @@ export function LocalCLIPanel({
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [resultText, setResultText] = useState("");
+  const [resultError, setResultError] = useState("");
+  const [resultId, setResultId] = useState("");
+  const resultEpoch = useRef(0);
   const alive = useRef(false);
   const epoch = useRef(0);
   const pending = useRef(false);
@@ -101,6 +108,9 @@ export function LocalCLIPanel({
   const lost = (err: unknown) => {
     if (err instanceof ApiError && [401, 403, 404].includes(err.status)) {
       setStatus(null);
+      setResultText("");
+      setResultId("");
+      ++resultEpoch.current;
       setSelected("");
       keys.current.clear();
       authority.current(err.status);
@@ -118,6 +128,9 @@ export function LocalCLIPanel({
   };
   useEffect(() => {
     alive.current = true;
+    setResultText("");
+    setResultId("");
+    setResultError("");
     const version = ++epoch.current;
     const controller = new AbortController();
     void api<Status>(path, { signal: controller.signal })
@@ -138,6 +151,7 @@ export function LocalCLIPanel({
     return () => {
       alive.current = false;
       ++epoch.current;
+      ++resultEpoch.current;
       controller.abort();
       keys.current.clear();
     };
@@ -177,6 +191,65 @@ export function LocalCLIPanel({
   const record = status?.requests.find(
     (value) => value.generation === generation,
   );
+  const openResult = async (id: string) => {
+    if (
+      !artifacts.some((value) => value.id === id && value.kind === "cli-result")
+    )
+      return;
+    const version = epoch.current;
+    const resultVersion = ++resultEpoch.current;
+    setResultText("");
+    setResultError("");
+    setResultId(id);
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}/artifacts/${encodeURIComponent(id)}`,
+        { credentials: "same-origin", cache: "no-store" },
+      );
+      if (!response.ok)
+        throw new ApiError(response.status, "artifact_unavailable");
+      const text = await response.text();
+      if (
+        alive.current &&
+        epoch.current === version &&
+        resultEpoch.current === resultVersion
+      )
+        setResultText(text);
+    } catch (err) {
+      if (
+        alive.current &&
+        epoch.current === version &&
+        resultEpoch.current === resultVersion
+      ) {
+        lost(err);
+        setResultError(message(err));
+        if (err instanceof ApiError && [401, 403, 404].includes(err.status))
+          setError(message(err));
+      }
+    }
+  };
+  const stateLabel = (value: string) =>
+    t(
+      (
+        {
+          AVAILABLE: "Result received",
+          PARTIAL_FAILURE: "Completed with diagnostics",
+          REQUEST_FAILED: "Native request failed",
+          EXECUTION_ERROR: "Result could not be verified",
+          AUTHENTICATION_REQUIRED: "Native login required",
+          USAGE_LIMITED: "Provider usage limit reached",
+          UNSUPPORTED_ITEM: "Unexpected native item",
+          OUTPUT_TRUNCATED: "Output exceeded the limit",
+          AUTHORITY_CHANGED: "Execution authority changed",
+          AUTHORITY_OR_EXECUTION_CHANGED:
+            "Execution authority or launch changed",
+          TIMEOUT: "Execution time limit reached",
+          NEVER_STARTED: "Confirmed never started",
+          UNVERIFIED: "Availability unverified",
+          VERSION_UNVERIFIED: "CLI version unverified",
+        } as Record<string, string>
+      )[value] || value,
+    );
   const profile = status?.profiles.find(
     (value) => value.id === (record?.profile_id || selected),
   );
@@ -210,7 +283,7 @@ export function LocalCLIPanel({
               <dd>
                 {window.usedPercent == null
                   ? t("Unknown")
-                  : `${window.usedPercent}%`}{" "}
+                  : `${window.usedPercent}% ${t("used")}`}{" "}
                 · {t("Resets")}:{" "}
                 {window.resetsAt == null
                   ? t("Unknown")
@@ -236,7 +309,7 @@ export function LocalCLIPanel({
           "One CLI invocation, 60 seconds, one local worker, no automatic retry. Native internal requests and account usage remain provider-managed.",
         )}
       </p>
-      {error && <p role="alert">{error}</p>}
+      {error && <p role="alert">{t(error)}</p>}
       {!status && !error && (
         <p role="status">{t("Loading saved CLI status")}</p>
       )}
@@ -259,7 +332,8 @@ export function LocalCLIPanel({
               <option value="">{t("Choose CLI")}</option>
               {status.profiles.map((value) => (
                 <option key={value.id} value={value.id}>
-                  {value.provider} {value.version} · {value.availability}
+                  {value.provider} {value.version} ·{" "}
+                  {stateLabel(value.availability)}
                 </option>
               ))}
             </select>
@@ -269,7 +343,7 @@ export function LocalCLIPanel({
               <p>
                 {profile.installation} ·{" "}
                 {profile.authentication || t("Authentication not checked")} ·{" "}
-                {profile.availability} · {profile.scope}
+                {stateLabel(profile.availability)} · {profile.scope}
               </p>
               {profile.restriction && (
                 <p role="status">{profile.restriction}</p>
@@ -346,8 +420,9 @@ export function LocalCLIPanel({
               {record.result && (
                 <>
                   <p>
-                    {record.result.availability} · {record.result.scope} ·{" "}
-                    {record.result.live_model}
+                    {stateLabel(record.result.availability)} ·{" "}
+                    <code>{record.result.availability}</code> ·{" "}
+                    {record.result.scope} · {record.result.live_model}
                   </p>
                   <p>
                     {t("Local process stopped")}:{" "}
@@ -367,6 +442,29 @@ export function LocalCLIPanel({
             </>
           )}
         </>
+      )}
+      {status && artifacts.some((value) => value.kind === "cli-result") && (
+        <section aria-label={t("Private CLI results")}>
+          <h3>{t("Private CLI results")}</h3>
+          {artifacts
+            .filter((value) => value.kind === "cli-result")
+            .map((value) => (
+              <button
+                key={value.id}
+                className="button secondary"
+                onClick={() => void openResult(value.id)}
+              >
+                {t("Open CLI result")}: {value.name}
+              </button>
+            ))}
+          {resultError && <p role="alert">{t(resultError)}</p>}
+          {resultId && !resultText && !resultError && (
+            <p role="status">{t("Loading private result")}</p>
+          )}
+          {resultText && (
+            <pre aria-label={t("CLI result text")}>{resultText}</pre>
+          )}
+        </section>
       )}
       <button
         className="button secondary"

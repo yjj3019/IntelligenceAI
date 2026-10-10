@@ -13,6 +13,7 @@ from intelligenceai.web.store import (
     artifacts,
     attempts,
     jobs,
+    members,
     now,
     paid_reviews,
     sessions,
@@ -87,6 +88,13 @@ class LocalCLI:
 
     def authority(self, conn, actor, project_id, task_id, session_hash, states):
         project, _ = self.service.authorize(conn, actor, project_id, {"owner"}, lock=True)
+        role = conn.execute(
+            select(members.c.role)
+            .where(members.c.project_id == project_id, members.c.user_id == actor)
+            .with_for_update()
+        ).scalar()
+        if role != "owner":
+            raise Problem(403, "cli_role_changed")
         self.service.task_row(conn, project_id, task_id)
         task = (
             conn.execute(select(tasks).where(tasks.c.id == task_id).with_for_update())

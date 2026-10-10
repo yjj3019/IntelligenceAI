@@ -125,6 +125,10 @@ class Service:
             not run["result"] or run["result"].get("scope") != "FAKE_CLI_TEST_ONLY" for run in local
         ):
             result["model_calls"] = None
+        counts = [run["result"].get("cli_invocations") if run["result"] else None for run in local]
+        result["local_cli_invocations"] = (
+            None if any(value is None for value in counts) else sum(counts)
+        )
         return result
 
     def task(self, actor, project_id, task_id):

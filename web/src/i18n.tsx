@@ -2,6 +2,32 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  "Local CLI invocations": "로컬 CLI 실행 횟수",
+  "Native internal model calls are reported separately.":
+    "공급자 내부 모델 호출 수는 별도로 표시합니다.",
+  "Native internal model calls are unknown.":
+    "공급자 내부 모델 호출 수는 미확인입니다.",
+  "NOTRUN · confirmed no model execution":
+    "미실행 · 모델을 실행하지 않았음이 확인됨",
+  used: "사용",
+  "Private CLI results": "비공개 CLI 결과",
+  "Open CLI result": "CLI 결과 열기",
+  "Loading private result": "비공개 결과 조회 중",
+  "CLI result text": "CLI 결과 본문",
+  "Result received": "결과 수신 완료",
+  "Completed with diagnostics": "진단이 포함된 완료",
+  "Native request failed": "CLI 요청 실패",
+  "Result could not be verified": "결과 검증 불가",
+  "Native login required": "CLI 로그인 필요",
+  "Provider usage limit reached": "공급자 사용 한도 도달",
+  "Unexpected native item": "예상하지 못한 CLI 항목",
+  "Output exceeded the limit": "출력 크기 한도 초과",
+  "Execution authority changed": "실행 권한 변경",
+  "Execution authority or launch changed": "실행 권한 또는 시작 상태 변경",
+  "Execution time limit reached": "실행 시간 한도 도달",
+  "Confirmed never started": "실행하지 않았음이 확인됨",
+  "Availability unverified": "호출 가능 여부 미확인",
+  "CLI version unverified": "CLI 버전 미확인",
   "Bound input payload": "승인에 묶인 입력",
   "Payload size and reported tokens are separate measurements. Actual token savings have not been measured.":
     "입력 크기와 CLI가 보고한 토큰 수는 별도 지표입니다. 실제 토큰 절감률은 측정하지 않았습니다.",

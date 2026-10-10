@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import insert, select, update
@@ -69,6 +70,60 @@ class Worker:
             raise Problem(409, "cli_fence_lost")
         return task, job
 
+    @contextmanager
+    def launch_authority(self, row, lease):
+        with self.db.begin() as conn:
+            current = self.locked(conn, row["id"])
+            self.verify(conn, current, lease)
+            conn.execute(update(requests).where(requests.c.id == row["id"]).values(state="RUNNING"))
+
+            def recheck():
+                current = self.locked(conn, row["id"])
+                self.verify(conn, current, lease)
+
+            yield recheck
+
+    def refresh_quota(self):
+        # Read identity without locks; native status can take 15 seconds.
+        with self.db.connect() as conn:
+            identity = (
+                conn.execute(select(profiles).where(profiles.c.id == self.profile_id))
+                .mappings()
+                .one()
+            )
+            self.cli.service.authorize(
+                conn, identity["actor_id"], identity["project_id"], {"owner"}
+            )
+            if not identity["active"] or identity["runtime_digest"] != self.runtime.runtime_digest:
+                raise Problem(409, "cli_runtime_changed")
+        snapshot = self.runtime.quota(self.root)
+        with self.db.begin() as conn:
+            # All paths acquire project authority before the profile row.
+            self.cli.service.authorize(
+                conn, identity["actor_id"], identity["project_id"], {"owner"}, lock=True
+            )
+            row = (
+                conn.execute(
+                    select(profiles).where(profiles.c.id == self.profile_id).with_for_update()
+                )
+                .mappings()
+                .one()
+            )
+            if (
+                not row["active"]
+                or any(
+                    row[key] != identity[key]
+                    for key in ("actor_id", "project_id", "provider", "runtime_digest")
+                )
+                or row["runtime_digest"] != self.runtime.runtime_digest
+            ):
+                raise Problem(409, "cli_runtime_changed")
+            conn.execute(
+                update(profiles)
+                .where(profiles.c.id == self.profile_id)
+                .values(metadata=clean(dict(row["metadata"]) | {"quota": snapshot}))
+            )
+
     def once(self):
         # One DB slot per owner. A crashed consumed attempt blocks all automatic replay.
         with self.db.begin() as conn:
@@ -78,11 +133,15 @@ class Worker:
                 .one()
             )
             conn.execute(
-                select(users.c.id).where(users.c.id == profile["actor_id"]).with_for_update()
+                select(users.c.id)
+                .where(users.c.id == profile["actor_id"])
+                .with_for_update(key_share=True)
             ).one()
-            self.cli.service.authorize(
-                conn, profile["actor_id"], profile["project_id"], {"owner"}, lock=True
-            )
+            conn.execute(
+                select(projects.c.id)
+                .where(projects.c.id == profile["project_id"])
+                .with_for_update()
+            ).one()
             if conn.execute(
                 select(requests.c.id).where(
                     requests.c.actor_id == profile["actor_id"],
@@ -106,7 +165,47 @@ class Worker:
             )
             if not row:
                 return False
-            task, job = self.verify(conn, row)
+            try:
+                task, job = self.verify(conn, row)
+            except Problem:
+                # QUEUED has never released stdin. Do not strand later valid requests.
+                result = {
+                    "availability": "NEVER_STARTED",
+                    "scope": self.runtime.scope,
+                    "live_model": "NOTRUN",
+                    "model_calls": 0,
+                    "cli_invocations": 0,
+                    "local_termination_confirmed": True,
+                    "remote_cancellation": "NOT_STARTED",
+                }
+                conn.execute(
+                    update(requests)
+                    .where(requests.c.id == row["id"])
+                    .values(state="NEVER_STARTED", result=result)
+                )
+                job = (
+                    conn.execute(
+                        select(jobs).where(jobs.c.task_id == row["task_id"]).with_for_update()
+                    )
+                    .mappings()
+                    .one()
+                )
+                if job["generation"] == row["generation"] and job["lease_token"] is None:
+                    conn.execute(
+                        update(jobs).where(jobs.c.id == job["id"]).values(state="FINISHED")
+                    )
+                    conn.execute(
+                        update(tasks).where(tasks.c.id == row["task_id"]).values(state="BLOCKED")
+                    )
+                self.cli.service.record(
+                    conn,
+                    row["project_id"],
+                    row["actor_id"],
+                    "cli.never_started",
+                    {"request_id": row["id"], **result},
+                    row["task_id"],
+                )
+                return True
             prompt, metrics = self.cli.prompt(conn, task)
             lease = uid()
             conn.execute(
@@ -130,13 +229,7 @@ class Worker:
         started = time.monotonic()
 
         def gate():
-            with self.db.begin() as conn:
-                current = self.locked(conn, row["id"])
-                self.verify(conn, current, lease)
-                # Persist before stdin release. An uncertain crash is never retried.
-                conn.execute(
-                    update(requests).where(requests.c.id == row["id"]).values(state="RUNNING")
-                )
+            return self.launch_authority(row, lease)
 
         try:
             process = self.runtime.start(workspace, prompt, gate)
@@ -162,6 +255,8 @@ class Worker:
             "remote_cancellation": "UNKNOWN",
             "native_internal_requests": "UNKNOWN",
             "model_calls": None,
+            "cli_invocations": None,
+            "exit_code": process.process.returncode if process is not None and stopped else None,
             "payload": metrics,
             "live_model": "NOTRUN" if self.runtime.scope == "FAKE_CLI_TEST_ONLY" else "UNKNOWN",
         }
@@ -176,6 +271,7 @@ class Worker:
                 truncated=process.overflow.is_set(),
             )
             if result["availability"] == "AVAILABLE":
+                result["cli_invocations"] = 1
                 result["live_model"] = (
                     "NOTRUN"
                     if self.runtime.scope == "FAKE_CLI_TEST_ONLY"
@@ -286,24 +382,7 @@ def main():
                 )
             print("Local CLI profile:", identifier, "execution restrictions unverified")
         elif args.command == "quota":
-            with db.begin() as conn:
-                row = (
-                    conn.execute(
-                        select(profiles).where(profiles.c.id == args.profile).with_for_update()
-                    )
-                    .mappings()
-                    .one()
-                )
-                if row["runtime_digest"] != runtime.runtime_digest:
-                    raise ValueError("cli_runtime_changed")
-                worker.cli.service.authorize(
-                    conn, row["actor_id"], row["project_id"], {"owner"}, lock=True
-                )
-                conn.execute(
-                    update(profiles)
-                    .where(profiles.c.id == args.profile)
-                    .values(metadata=dict(row["metadata"]) | {"quota": runtime.quota(worker.root)})
-                )
+            worker.refresh_quota()
             print("Official usage snapshot refreshed; no model turn started")
         elif args.command == "serve":
             while True:

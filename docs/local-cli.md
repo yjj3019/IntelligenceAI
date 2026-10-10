@@ -98,6 +98,29 @@ provided supported target. Local fixture tests are not production deployment evi
 
 ## Primary contracts
 
+The launch authority transaction remains open through the actual stdin gate
+handoff, with a final expiry/lease/session/role recheck. Owner serialization uses
+PostgreSQL `FOR NO KEY UPDATE`, compatible with audit/receipt user foreign-key
+checks. Quota work takes no database locks while waiting for the native status;
+publication locks project before profile and checks current identity/authority.
+Expired or revoked requests still in `QUEUED` are recorded as `NEVER_STARTED` with
+zero invocations; the worker can then process later valid requests. Consumed
+`STARTING`/`RUNNING`/`UNKNOWN` attempts continue to block automatic replay.
+
+CLI result artifacts are displayed separately from candidate artifacts and their
+text is fetched through the authorized artifact endpoint. Native internal model
+calls remain unknown after a native launch; they are not inferred from one CLI
+invocation. Confirmed results prove one CLI invocation, uncertain launches remain
+unknown, and only confirmed unstarted requests claim zero/`NOTRUN`.
+
+Codex JSONL for this version omits agent-message phase. With one completed turn,
+no diagnostics/tools and exit zero, the last agent message is selected. An empty
+last message cannot fall back to commentary. This follows the pinned
+[official final-message contract](https://github.com/openai/codex/blob/092d3acd6bec3e3a14bdc7e7a2810ab628ab759d/codex-rs/exec/src/event_processor_with_jsonl_output.rs#L387-L400).
+Private metadata records only terminal flags, safe counts, exit/termination,
+availability and native usage; it does not preserve raw messages, event order or
+account output. Existing lost smoke output cannot be reconstructed from it.
+
 - [Claude CLI reference](https://code.claude.com/docs/en/cli-reference),
   [hooks](https://code.claude.com/docs/en/hooks),
   [headless](https://code.claude.com/docs/en/headless).

@@ -697,7 +697,10 @@ function WorkspaceApp() {
     }
     let alive = true;
     const epoch = requestEpoch.current;
-    const artifactId = task.artifacts[0].id;
+    const artifactId = task.artifacts.find(
+      (value) => value.kind === "candidate",
+    )?.id;
+    if (!artifactId) return;
     const candidateEpoch = artifactEpoch.current;
     void fetch(
       "/api/projects/" +
@@ -1308,8 +1311,36 @@ function WorkspaceApp() {
                         <span>{t("Model calls")}</span>
                         <Code2 size={18} />
                       </div>
-                      <strong>{formatNumber(0, 2)}</strong>
-                      <small>{t("Live execution is disabled")}</small>
+                      <strong>
+                        {tasks.some((value) => value.model_calls == null)
+                          ? t("Unknown")
+                          : formatNumber(
+                              tasks.reduce(
+                                (total, value) =>
+                                  total + (value.model_calls ?? 0),
+                                0,
+                              ),
+                              2,
+                            )}
+                      </strong>
+                      <small>
+                        {t("Local CLI invocations")}:{" "}
+                        {tasks.some(
+                          (value) => value.local_cli_invocations === null,
+                        )
+                          ? t("Unknown")
+                          : formatNumber(
+                              tasks.reduce(
+                                (total, value) =>
+                                  total + (value.local_cli_invocations ?? 0),
+                                0,
+                              ),
+                            )}
+                        .{" "}
+                        {t(
+                          "Native internal model calls are reported separately.",
+                        )}
+                      </small>
                     </article>
                   </div>
                   <div className="overview-grid">
@@ -1954,7 +1985,19 @@ function WorkspaceApp() {
                         <Code2 size={21} />
                         <div>
                           <strong>{t("Provider execution")}</strong>
-                          <p>{t("DISABLED · no model has run")}</p>
+                          <p>
+                            {task.model_calls == null
+                              ? t("Native internal model calls are unknown.")
+                              : task.model_calls === 0
+                                ? t("NOTRUN · confirmed no model execution")
+                                : `${t("Model calls")}: ${task.model_calls}`}
+                          </p>
+                          <p>
+                            {t("Local CLI invocations")}:{" "}
+                            {task.local_cli_invocations === null
+                              ? t("Unknown")
+                              : (task.local_cli_invocations ?? 0)}
+                          </p>
                         </div>
                       </div>
                       <div className="evidence-item">
@@ -2184,6 +2227,7 @@ function WorkspaceApp() {
                         taskId={task.id}
                         generation={task.generation}
                         csrf={session.csrf}
+                        artifacts={task.artifacts || []}
                         onAuthorityLost={(status) => {
                           clearPrivate();
                           setAuthNeeded(status === 401);

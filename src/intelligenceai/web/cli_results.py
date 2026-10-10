@@ -80,7 +80,7 @@ def parse(provider, stdout, stderr, returncode, measured_at, *, truncated=False)
             success = (
                 len(terminal) == 1
                 and terminal[0]["type"] == "turn.completed"
-                and len(messages) == 1
+                and bool(messages)
                 and not tool_events
                 and not diagnostics
             )
@@ -98,7 +98,9 @@ def parse(provider, stdout, stderr, returncode, measured_at, *, truncated=False)
             elif tool_events:
                 result["availability"] = "UNSUPPORTED_ITEM"
             value = terminal[0] if terminal else {}
-            answer = messages[0] if len(messages) == 1 else None
+            # rust-v0.162.1 drops message phase in JSONL; the final message is last.
+            # An empty final message must not fall back to prior commentary.
+            answer = messages[-1] if messages else None
         elif provider == "claude":
             value = json.loads(text)
             success = (

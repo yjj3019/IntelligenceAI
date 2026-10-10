@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 from intelligenceai.web import cli_gate
@@ -24,7 +25,9 @@ def native_environment():
 
 
 class LocalProcess:
-    def __init__(self, argv, cwd, prompt, *, before_start=lambda: None, mode="prompt"):
+    def __init__(
+        self, argv, cwd, prompt, *, before_start=lambda: nullcontext(lambda: None), mode="prompt"
+    ):
         self.buffers = [bytearray(), bytearray()]
         self.overflow = threading.Event()
         self.job = None
@@ -70,7 +73,6 @@ class LocalProcess:
                 thread = threading.Thread(target=self._drain, args=(index, stream), daemon=True)
                 thread.start()
                 self.threads.append(thread)
-            before_start()
             envelope = json.dumps(
                 {"argv": argv, "cwd": str(cwd), "prompt": prompt, "mode": mode},
                 ensure_ascii=False,
@@ -78,8 +80,12 @@ class LocalProcess:
             ).encode("utf-8")
             if len(envelope) > 16383:
                 raise ValueError("local_cli_input_too_large")
-            self.process.stdin.write(envelope + b"\n")
-            self.process.stdin.close()
+            # Authorization locks cover the actual gate handoff, not just its preparation.
+            with before_start() as recheck:
+                recheck()
+                self.process.stdin.write(envelope + b"\n")
+                self.process.stdin.flush()
+                self.process.stdin.close()
         except BaseException:
             self.close()
             raise

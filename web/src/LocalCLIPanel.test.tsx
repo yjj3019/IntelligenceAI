@@ -71,7 +71,7 @@ const response = (value: unknown, code = 200) =>
     status: code,
     headers: { "Content-Type": "application/json" },
   });
-const panel = (properties = props) => (
+const panel = (properties: Parameters<typeof LocalCLIPanel>[0] = props) => (
   <LocaleProvider>
     <LocalCLIPanel {...properties} />
   </LocaleProvider>
@@ -270,4 +270,114 @@ it("expired approval cannot be queued", async () => {
   expect(
     await screen.findByRole("button", { name: "Approve and queue once" }),
   ).toBeDisabled();
+});
+
+const resultArtifact = {
+  id: "result",
+  kind: "cli-result",
+  name: "Private review",
+  digest: "a".repeat(64),
+};
+
+it("opens only CLI result artifacts as escaped private text", async () => {
+  const fetcher = vi
+    .fn()
+    .mockImplementation(async (input) =>
+      String(input).includes("/artifacts/")
+        ? new Response("SYNTHETIC_RESULT <img src=x onerror=alert(1)>")
+        : response(status),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(
+    panel({
+      ...props,
+      artifacts: [
+        { ...resultArtifact, id: "candidate", kind: "candidate" },
+        resultArtifact,
+      ],
+    }),
+  );
+  const button = await screen.findByRole("button", {
+    name: "Open CLI result: Private review",
+  });
+  fireEvent.click(button);
+  expect(await screen.findByLabelText("CLI result text")).toHaveTextContent(
+    "SYNTHETIC_RESULT",
+  );
+  expect(view.container.querySelector("img")).toBeNull();
+  expect(
+    fetcher.mock.calls
+      .filter(([input]) => String(input).includes("/artifacts/"))
+      .map(([input]) => String(input)),
+  ).toEqual(["/api/projects/project/tasks/task/artifacts/result"]);
+});
+
+it("late result bytes are discarded after task navigation", async () => {
+  let deliver: (value: Response) => void = () => {};
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(async (input) =>
+      String(input).includes("/artifacts/")
+        ? new Promise<Response>((resolve) => {
+            deliver = resolve;
+          })
+        : response(status),
+    ),
+  );
+  const view = render(
+    <LocaleProvider>
+      <LocalCLIPanel key="old-result" {...props} artifacts={[resultArtifact]} />
+    </LocaleProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole("button", {
+      name: "Open CLI result: Private review",
+    }),
+  );
+  view.rerender(
+    <LocaleProvider>
+      <LocalCLIPanel key="new-result" {...props} taskId="other" />
+    </LocaleProvider>,
+  );
+  await act(async () => deliver(new Response("PRIVATE_OLD_RESULT")));
+  expect(screen.queryByText("PRIVATE_OLD_RESULT")).not.toBeInTheDocument();
+});
+
+it("KO errors and diagnostic outcomes are localized while codes are preserved", async () => {
+  localStorage.setItem("iai.language", "ko");
+  const fetcher = vi
+    .fn()
+    .mockImplementation(async (input) =>
+      String(input).includes("/artifacts/")
+        ? response({ error: "project_not_found" }, 403)
+        : response({
+            ...status,
+            requests: [
+              {
+                ...record,
+                state: "UNKNOWN",
+                result: {
+                  availability: "PARTIAL_FAILURE",
+                  scope: "LOCAL_NATIVE_CLI",
+                  live_model: "UNKNOWN",
+                  local_termination_confirmed: true,
+                  remote_cancellation: "UNKNOWN",
+                },
+              },
+            ],
+          }),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  render(panel({ ...props, artifacts: [resultArtifact] }));
+  expect(await screen.findByText(/진단이 포함된 완료/)).toBeInTheDocument();
+  expect(screen.getByText("PARTIAL_FAILURE")).toBeInTheDocument();
+  expect(screen.getByText(/0% 사용/)).toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "CLI 결과 열기: Private review" }),
+  );
+  expect(await screen.findByRole("alert")).not.toHaveTextContent(
+    "Access is unavailable",
+  );
+  expect(props.onAuthorityLost).toHaveBeenCalledWith(403);
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
 });
