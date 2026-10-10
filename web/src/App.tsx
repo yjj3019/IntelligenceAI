@@ -1836,7 +1836,8 @@ function WorkspaceApp() {
                         </p>
                         {task.vendor_runs.map((run) => (
                           <article className="receipt-card" key={run.id}>
-                            <code>{run.id}</code> <Badge state={run.state} />
+                            <code className="digest">{run.id}</code>
+                            <Badge state={run.state} />
                             <p>
                               {t(
                                 run.result?.termination_confirmed

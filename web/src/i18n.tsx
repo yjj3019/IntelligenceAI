@@ -21,9 +21,9 @@ export const ko = {
   "Synthetic process termination confirmed. Live model NOTRUN.":
     "합성 프로세스 종료를 확인했습니다. 실제 모델은 NOTRUN입니다.",
   "Fixed synthetic vendor response": "고정 합성 vendor 응답",
-  VENDOR_QUEUED: "합성 vendor 대기 중",
-  VENDOR_RUNNING: "합성 vendor 실행 중",
-  FIXTURE_COMPLETED: "합성 vendor 완료",
+  "vendor queued": "합성 vendor 대기 중",
+  "vendor running": "합성 vendor 실행 중",
+  "fixture completed": "합성 vendor 완료",
   Provider: "Provider",
   Mode: "실행 모드",
   Status: "상태",

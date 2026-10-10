@@ -292,6 +292,13 @@ describe("private boundary and failure flows", () => {
     expect(
       screen.getByRole("button", { name: "Run approved synthetic vendor" }),
     ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
+    expect(screen.getByText("합성 vendor 완료")).toBeVisible();
+    expect(
+      screen.getByText(
+        "합성 프로세스 종료를 확인했습니다. 실제 모델은 NOTRUN입니다.",
+      ),
+    ).toBeVisible();
   });
   it("shows server provider blockers in both languages without enabling execution", async () => {
     history.replaceState({}, "", "/app/connections");
