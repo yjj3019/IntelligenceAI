@@ -164,6 +164,6 @@ it("Korean device actions are readable and expired proposals cannot be approved"
   );
   render(panel());
   await screen.findByRole("heading", { name: "내 PC 연결" });
-  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(await screen.findByRole("checkbox"));
   expect(screen.getByRole("button", { name: "이 PC 승인" })).toBeDisabled();
 });
