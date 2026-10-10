@@ -124,3 +124,7 @@ user-PC packages, AppArmor/sysctl changes and privileged fallback are excluded.
 확인된 기존 credential, 검증된 Linux 실행환경과 private HTTPS/OIDC/DB 연결이
 준비되기 전에는 provider를 호출하지 않는다. 계정·credential 생성이나 PC 포트
 외부 개방 없이 로컬 합성 계약과 CI만 검증했다.
+
+## Optional own-machine CLI worker
+
+See [local CLI deployment](local-cli.md#operator-deployment) for additive schema initialization, local registration and `once`/`serve` consumption. Use the existing supported private PostgreSQL/OIDC configuration. Each user's installed CLI authenticates itself on their own machine; never copy its native auth to the API server. This initial operator-managed ledger access is not a public multi-user worker enrollment service. No new hosting/resource/security setting is provisioned by these commands.

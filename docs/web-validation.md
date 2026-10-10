@@ -65,3 +65,7 @@ CI의 임시 DB 검증은 운영 DB의 장애 재시작·backup 검증이 아닙
 로컬 Windows의 깊은 테스트 경로에서는 Git이 `fatal: '$GIT_DIR' too big`을 반환했습니다. 전역 설정을 바꾸지 않고 저장소 내부의 짧은 전용 fixture 경로를 사용했으며 runner는 과도하게 긴 Windows state root를 시작 전에 거부합니다. 실제 subprocess 회귀는 로컬에서 수분이 걸렸지만 동일 검토 후보의 CI web 회귀는 PostgreSQL 21.57초, SQLite 17.96초, loopback fullstack 2.51초로 종료됐습니다. 각 subprocess의 90초 deadline과 owned-child cleanup이 있으며 timeout은 종료 확인으로 과장하지 않습니다.
 
 이번 후속 변경은 지원 테스트 브라우저 도구가 노출되지 않아 실제 브라우저의 모바일·키보드·취소/재시작 재검증은 NOTRUN입니다. 기존 GUI의 브라우저 검증과 새 component/HTTP fullstack 검증을 구분합니다. 브라우저를 설치하거나 보안 설정을 우회하지 않았습니다. 공개 Sites 배포는 이전 버전을 유지하며 이번 최종 배포는 제외했습니다.
+
+## Local CLI regression scope
+
+`tests/test_local_cli.py` uses explicitly synthetic trusted snapshot/DB fixtures and a fixed fake executable for HTTP approval → durable queue → separate process → private import. It checks cross-user authorization, exact bindings, duplicates, queued/running cancellation, descendants, revocation, strict provider terminal parsing, redaction, unknown usage and deterministic UTF-8 payloads. Frontend mocked-fetch tests verify manual-only actions, stale responses, permission loss, XSS rendering and expiry. These fixtures do not prove native provider success or production PostgreSQL/OIDC deployment. Real native availability observations are recorded separately in the private task report, never substituted by fixtures.

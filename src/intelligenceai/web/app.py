@@ -261,7 +261,36 @@ def create_app(settings: Settings, *, db=None, testing=False):
     def task(request: Request, project_id: str, task_id: str):
         return service.task(actor(request)["id"], project_id, task_id)
 
+    from intelligenceai.web.cli_service import (
+        ConsentInput as CLIConsentInput,
+    )
+    from intelligenceai.web.cli_service import (
+        LocalCLI,
+    )
+    from intelligenceai.web.cli_service import (
+        PrepareInput as CLIPrepareInput,
+    )
     from intelligenceai.web.paid_admission import ConsentInput, PaidAdmission, QuoteInput
+
+    local_cli = LocalCLI(db)
+
+    @app.get("/api/projects/{project_id}/tasks/{task_id}/local-cli")
+    def cli_status(request: Request, project_id: str, task_id: str):
+        return local_cli.status(actor(request)["id"], project_id, task_id)
+
+    @app.post("/api/projects/{project_id}/tasks/{task_id}/local-cli/prepare")
+    def cli_prepare(request: Request, project_id: str, task_id: str, data: CLIPrepareInput):
+        user_id, key = mutation(request)
+        return local_cli.prepare(
+            user_id, project_id, task_id, key, data, request.scope.get("server_session_hash")
+        )
+
+    @app.post("/api/projects/{project_id}/tasks/{task_id}/local-cli/approve")
+    def cli_approve(request: Request, project_id: str, task_id: str, data: CLIConsentInput):
+        user_id, key = mutation(request)
+        return local_cli.approve(
+            user_id, project_id, task_id, key, data, request.scope.get("server_session_hash")
+        )
 
     paid_admission = PaidAdmission(db)
 

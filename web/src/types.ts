@@ -58,7 +58,8 @@ export type Task = {
   evidence_verified: boolean;
   destination_id: "private-review";
   execution_enabled: boolean;
-  model_calls: number;
+  model_calls: number | null;
+  local_cli_invocations?: number | null;
   source: string;
   artifacts?: Artifact[];
   approval?: Binding | null;

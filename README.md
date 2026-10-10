@@ -1,5 +1,7 @@
 # IntelligenceAI
 
+[본인의 로컬 CLI 실행](docs/local-cli.ko.md)을 기본 검토 경로로 추가했다. 설치·로그인 조회와 실제 실행 결과를 구분하고, 사용자가 승인한 요청만 별도 로컬 worker에서 실행한다. 구독·과금 관리는 각 AI 서비스에 맡기며 계정 한도와 실행 토큰은 별도로 표시한다. 기존 API 검토는 고급 항목에 유지한다.
+
 [유료 검토 승인·요청 화면](docs/paid-admission.ko.md)과
 [private dispatcher](docs/paid-dispatch.ko.md)를 연결했다. 확정 요청, 외부 서명 발급,
 예산 예약을 기존 worker 경로로 전달한다. 브라우저는 credential이나 실행 플래그를

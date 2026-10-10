@@ -234,6 +234,37 @@ audit = Table(
 )
 
 
+local_cli_profiles = Table(
+    "web_local_cli_profiles",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("project_id", ForeignKey(projects.c.id), nullable=False),
+    Column("actor_id", ForeignKey(users.c.id), nullable=False),
+    Column("provider", String(16), nullable=False),
+    Column("runtime_digest", String(64), nullable=False),
+    Column("metadata", JSON, nullable=False),
+    Column("active", Boolean, nullable=False, default=True),
+)
+local_cli_requests = Table(
+    "web_local_cli_requests",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("project_id", ForeignKey(projects.c.id), nullable=False),
+    Column("task_id", ForeignKey(tasks.c.id), nullable=False),
+    Column("generation", Integer, nullable=False),
+    Column("actor_id", ForeignKey(users.c.id), nullable=False),
+    Column("session_hash", ForeignKey(sessions.c.token_hash), nullable=False),
+    Column("profile_id", ForeignKey(local_cli_profiles.c.id), nullable=False),
+    Column("binding", JSON, nullable=False),
+    Column("binding_digest", String(64), nullable=False),
+    Column("state", String(32), nullable=False),
+    Column("lease_token", String(64)),
+    Column("result", JSON),
+    Column("created_at", BigInteger, nullable=False),
+    UniqueConstraint("task_id", "generation"),
+)
+
+
 def now() -> int:
     return int(time.time())
 

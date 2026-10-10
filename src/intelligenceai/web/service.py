@@ -16,6 +16,7 @@ from intelligenceai.web.store import (
     audit,
     execution_grants,
     jobs,
+    local_cli_requests,
     members,
     now,
     paid_requests,
@@ -91,7 +92,7 @@ class Service:
         with self.db.connect() as conn:
             self.authorize(conn, actor, project_id)
             return [
-                self.view(row)
+                self.cli_view(conn, row)
                 for row in conn.execute(
                     select(tasks)
                     .where(tasks.c.project_id == project_id)
@@ -108,11 +109,33 @@ class Service:
         result["source"] = "private-ledger"
         return result
 
+    def cli_view(self, conn, row):
+        result = self.view(row)
+        local = (
+            conn.execute(
+                select(local_cli_requests).where(
+                    local_cli_requests.c.task_id == row["id"],
+                    local_cli_requests.c.state.in_(["STARTING", "RUNNING", "UNKNOWN", "COMPLETED"]),
+                )
+            )
+            .mappings()
+            .all()
+        )
+        if any(
+            not run["result"] or run["result"].get("scope") != "FAKE_CLI_TEST_ONLY" for run in local
+        ):
+            result["model_calls"] = None
+        counts = [run["result"].get("cli_invocations") if run["result"] else None for run in local]
+        result["local_cli_invocations"] = (
+            None if any(value is None for value in counts) else sum(counts)
+        )
+        return result
+
     def task(self, actor, project_id, task_id):
         with self.db.connect() as conn:
             self.authorize(conn, actor, project_id)
             row = self.task_row(conn, project_id, task_id)
-            result = self.view(row)
+            result = self.cli_view(conn, row)
             result["artifacts"] = [
                 dict(a)
                 for a in conn.execute(
@@ -373,7 +396,36 @@ class Service:
                 conn.execute(
                     update(paid_reviews).where(paid_reviews.c.id == paid["id"]).values(revoked=True)
                 )
-            if job["state"] == "FINISHED" and not confirmed_complete and not paid:
+            local = (
+                conn.execute(
+                    select(local_cli_requests)
+                    .where(
+                        local_cli_requests.c.task_id == task_id,
+                        local_cli_requests.c.generation == task["generation"],
+                    )
+                    .with_for_update()
+                )
+                .mappings()
+                .first()
+            )
+            if local:
+                confirmed = local["state"] in {"PREPARED", "QUEUED"} and job["lease_token"] is None
+                if confirmed:
+                    conn.execute(
+                        update(local_cli_requests)
+                        .where(local_cli_requests.c.id == local["id"])
+                        .values(
+                            state="CANCELLED",
+                            result={
+                                "availability": "NEVER_STARTED",
+                                "live_model": "NOTRUN",
+                                "local_termination_confirmed": True,
+                            },
+                        )
+                    )
+                elif local["state"] == "COMPLETED":
+                    raise Problem(409, "cli_result_already_received")
+            if job["state"] == "FINISHED" and not confirmed_complete and not paid and not local:
                 raise Problem(409, "termination_receipt_required")
             state = "CANCELLED" if confirmed else "CANCEL_REQUESTED"
             conn.execute(
@@ -408,6 +460,14 @@ class Service:
     def recover(self, actor, project_id, task_id, key):
         def operation(conn, _):
             task = self.task_row(conn, project_id, task_id)
+            unresolved = conn.execute(
+                select(local_cli_requests.c.id).where(
+                    local_cli_requests.c.task_id == task_id,
+                    local_cli_requests.c.state.in_(["STARTING", "RUNNING", "UNKNOWN"]),
+                )
+            ).first()
+            if unresolved:
+                raise Problem(409, "cli_prior_run_unresolved")
             job = (
                 conn.execute(select(jobs).where(jobs.c.task_id == task_id).with_for_update())
                 .mappings()
