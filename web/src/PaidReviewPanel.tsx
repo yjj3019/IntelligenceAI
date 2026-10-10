@@ -21,6 +21,7 @@ type Quote = {
 };
 type RequestRecord = {
   id: string;
+  profile_id: string;
   state: "QUOTED" | "APPROVED" | "REQUESTED" | "STALE";
   quote: Quote;
   quote_digest: string;
@@ -71,6 +72,7 @@ export function PaidReviewPanel({
   const [status, setStatus] = useState<Status | null>(null);
   const [record, setRecord] = useState<RequestRecord | null>(null);
   const [selected, setSelected] = useState("");
+  const [editingQuote, setEditingQuote] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now() / 1000);
@@ -98,17 +100,16 @@ export function PaidReviewPanel({
         if (!alive.current || epoch.current !== version) return;
         checkedStatus(value);
         setStatus(value);
-        setSelected(value.profiles[0]?.id || "");
-        setRecord(
+        const saved =
           value.requests.find(
             (item) =>
               item.quote.generation === generation && item.state !== "STALE",
           ) ||
-            value.requests.find(
-              (item) => item.quote.generation === generation,
-            ) ||
-            null,
-        );
+          value.requests.find((item) => item.quote.generation === generation) ||
+          null;
+        setRecord(saved);
+        setSelected(saved?.profile_id || value.profiles[0]?.id || "");
+        setEditingQuote(!saved);
       })
       .catch((err) => {
         if (
@@ -140,14 +141,16 @@ export function PaidReviewPanel({
       if (!alive.current || epoch.current !== version) return;
       checkedStatus(value);
       setStatus(value);
-      setRecord(
+      const saved =
         value.requests.find(
           (item) =>
             item.quote.generation === generation && item.state !== "STALE",
         ) ||
-          value.requests.find((item) => item.quote.generation === generation) ||
-          null,
-      );
+        value.requests.find((item) => item.quote.generation === generation) ||
+        null;
+      setRecord(saved);
+      setSelected(saved?.profile_id || value.profiles[0]?.id || "");
+      setEditingQuote(!saved);
     } catch (err) {
       if (alive.current && epoch.current === version) {
         setError(message(err));
@@ -171,7 +174,11 @@ export function PaidReviewPanel({
           : null;
     if (
       !body ||
-      (action !== "quote" && (!record || record.quote.expires_at <= now))
+      (action === "quote" &&
+        (!editingQuote ||
+          !status.profiles.some((item) => item.id === selected))) ||
+      (action !== "quote" &&
+        (editingQuote || !record || record.quote.expires_at <= now))
     )
       return;
     const fingerprint = JSON.stringify([
@@ -192,7 +199,11 @@ export function PaidReviewPanel({
         keys.current.get(fingerprint)!,
         body,
       );
-      if (alive.current && epoch.current === version) setRecord(value);
+      if (alive.current && epoch.current === version) {
+        setRecord(value);
+        setSelected(value.profile_id);
+        setEditingQuote(false);
+      }
     } catch (err) {
       if (alive.current && epoch.current === version) {
         setError(message(err));
@@ -234,14 +245,22 @@ export function PaidReviewPanel({
           )}
         </p>
       )}
-      {!!status?.profiles.length && (
+      {status && (!!status.profiles.length || !!record) && (
         <label className="field">
           {t("Operator model profile")}
           <select
             value={selected}
-            disabled={busy || !!record}
+            disabled={busy || !editingQuote}
             onChange={(e) => setSelected(e.target.value)}
           >
+            {record &&
+              !status.profiles.some(
+                (item) => item.id === record.profile_id,
+              ) && (
+                <option value={record.profile_id} disabled>
+                  {t("Saved profile unavailable")} — {record.quote.model}
+                </option>
+              )}
             {status.profiles.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.name} · {item.model} · {item.effort} ·{" "}
@@ -327,11 +346,30 @@ export function PaidReviewPanel({
         </p>
       )}
       <div className="button-row">
+        {record && !editingQuote && (
+          <button
+            className="button secondary"
+            disabled={
+              busy ||
+              !status?.can_consent ||
+              !status.profiles.length ||
+              (record.state === "REQUESTED" && !expired)
+            }
+            onClick={() => {
+              setSelected(
+                status?.profiles.some((item) => item.id === record.profile_id)
+                  ? record.profile_id
+                  : status?.profiles[0]?.id || "",
+              );
+              setEditingQuote(true);
+            }}
+          >
+            {t("Choose profile for a new quote")}
+          </button>
+        )}
         <button
           className="button secondary"
-          disabled={
-            busy || !status?.can_consent || !selected || (!!record && !expired)
-          }
+          disabled={busy || !status?.can_consent || !selected || !editingQuote}
           onClick={() => void submit("quote")}
         >
           {t("Prepare paid review quote")}
@@ -341,6 +379,7 @@ export function PaidReviewPanel({
           disabled={
             busy ||
             !status?.can_consent ||
+            editingQuote ||
             expired ||
             record?.state !== "QUOTED"
           }
@@ -353,6 +392,7 @@ export function PaidReviewPanel({
           disabled={
             busy ||
             !status?.can_consent ||
+            editingQuote ||
             expired ||
             record?.state !== "APPROVED"
           }

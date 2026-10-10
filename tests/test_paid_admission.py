@@ -69,6 +69,7 @@ def test_exact_consent_and_one_time_request_remain_notrun_and_hold_no_funds(fixt
     f = fixture
     path, task_id, headers, profile_id = setup(f)
     record, binding = quote(f, path, headers, profile_id)
+    assert record["profile_id"] == profile_id
     q = record["quote"]
     assert (q["actor_id"], q["project_id"], q["task_id"], q["generation"]) == (
         f["alice"],
@@ -88,6 +89,9 @@ def test_exact_consent_and_one_time_request_remain_notrun_and_hold_no_funds(fixt
     assert post(f, path + "/request", headers, binding).status_code == 409
     assert post(f, path + "/quote", headers, {"profile_id": profile_id}).status_code == 409
     status = f["client"].get(path).json()
+    assert status["requests"][0]["profile_id"] == profile_id
+    assert status["requests"][0]["quote_digest"] == record["quote_digest"]
+    assert status["requests"][0]["quote"] == record["quote"]
     assert (
         status["execution_enabled"] is False
         and "signed_control_receipts_required" in status["blockers"]

@@ -48,6 +48,7 @@ class PaidAdmission:
             else "STALE",
             "quote": row["quote"],
             "quote_digest": row["quote_digest"],
+            "profile_id": row["profile_id"],
             "live_model": "NOTRUN",
         }
 

@@ -39,6 +39,12 @@ refreshes never send approval. The UI keeps request keys through lost responses,
 ignores late responses after navigation/logout, and clears private data on
 authority loss. Public synthetic demo pages do not mount this component.
 
+Each returned request includes its stored `profile_id` outside the signed quote.
+Revisiting or refreshing restores that exact profile, including an unavailable
+historical profile. Selecting a replacement requires the explicit new-quote
+action; this draft choice does not alter the displayed saved quote or its digest.
+Approval/request stay disabled while preparing the replacement.
+
 Additive tables are `web_paid_profiles` and `web_paid_requests`; use the existing
 reviewed `web.manage init-db` procedure after backup. No new secret environment
 variable, account or payment management feature was added. Deployment still

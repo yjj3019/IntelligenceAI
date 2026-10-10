@@ -35,6 +35,7 @@ const quote = {
 };
 const record = {
   id: "request",
+  profile_id: "profile",
   quote,
   quote_digest: "d".repeat(64),
   state: "QUOTED",
@@ -181,6 +182,9 @@ it("keeps an expired intent disabled and clears private content on revoked autho
     screen.getByRole("button", { name: "Approve this cost ceiling" }),
   ).toBeDisabled();
   fireEvent.click(
+    screen.getByRole("button", { name: "Choose profile for a new quote" }),
+  );
+  fireEvent.click(
     screen.getByRole("button", { name: "Prepare paid review quote" }),
   );
   await waitFor(() =>
@@ -212,4 +216,141 @@ it("ignores a late previous-task response and shows setup blockers with no model
   expect(
     screen.getByRole("button", { name: "Prepare paid review quote" }),
   ).toBeDisabled();
+});
+
+const multipleProfiles = ["A", "B", "C"].map((id) => ({
+  ...status.profiles[0],
+  id,
+  name: `SYNTHETIC_${id}_ONLY`,
+  model: `claude-fixture-${id}`,
+}));
+const savedB = {
+  ...record,
+  profile_id: "B",
+  quote: { ...quote, model: "claude-fixture-B" },
+};
+
+it("restores the exact B profile across revisit and refresh without mutating its quote", async () => {
+  const fetch = vi.fn(async (path: string, options: RequestInit) => {
+    expect(path).toContain("/paid-review");
+    expect(options.method).not.toBe("POST");
+    return response({
+      ...status,
+      profiles: multipleProfiles,
+      requests: [savedB],
+    });
+  });
+  vi.stubGlobal("fetch", fetch);
+  const view = render(panel());
+  const selector = await screen.findByRole("combobox");
+  expect(selector).toHaveValue("B");
+  expect(selector).toBeDisabled();
+  expect(
+    screen.getByText("claude / claude-fixture-B / low"),
+  ).toBeInTheDocument();
+  view.unmount();
+  render(panel());
+  await waitFor(() => expect(screen.getByRole("combobox")).toHaveValue("B"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Check saved paid request" }),
+  );
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+  expect(screen.getByRole("combobox")).toHaveValue("B");
+  expect(fetch.mock.calls.every((call) => call[1].method !== "POST")).toBe(
+    true,
+  );
+  expect(savedB.quote_digest).toBe(record.quote_digest);
+});
+
+it.each(["expired", "STALE"])(
+  "requires an explicit new choice after %s and quotes the chosen C profile",
+  async (state) => {
+    const posts: RequestInit[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_path: string, options: RequestInit) => {
+        if (options.method !== "POST")
+          return response({
+            ...status,
+            profiles: multipleProfiles,
+            requests: [
+              {
+                ...savedB,
+                state: state === "STALE" ? "STALE" : "QUOTED",
+                quote: {
+                  ...savedB.quote,
+                  expires_at: state === "expired" ? 1 : quote.expires_at,
+                },
+              },
+            ],
+          });
+        posts.push(options);
+        return response({
+          ...record,
+          profile_id: "C",
+          quote: { ...quote, model: "claude-fixture-C" },
+        });
+      }),
+    );
+    render(panel());
+    await screen.findByText(/This paid intent expired/);
+    const selector = screen.getByRole("combobox");
+    const prepare = screen.getByRole("button", {
+      name: "Prepare paid review quote",
+    });
+    expect(selector).toHaveValue("B");
+    expect(selector).toBeDisabled();
+    expect(prepare).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Choose profile for a new quote" }),
+    );
+    fireEvent.change(selector, { target: { value: "C" } });
+    expect(
+      screen.getByText("claude / claude-fixture-B / low"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Approve this cost ceiling" }),
+    ).toBeDisabled();
+    fireEvent.click(prepare);
+    await screen.findByText("claude / claude-fixture-C / low");
+    expect(JSON.parse(posts[0].body as string)).toEqual({ profile_id: "C" });
+    expect(selector).toHaveValue("C");
+    expect(selector).toBeDisabled();
+  },
+);
+
+it("keeps an unavailable saved B visible until explicitly replacing it with an active C", async () => {
+  const posts: RequestInit[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_path: string, options: RequestInit) => {
+      if (options.method !== "POST")
+        return response({
+          ...status,
+          profiles: multipleProfiles.filter((item) => item.id !== "B"),
+          requests: [{ ...savedB, state: "STALE" }],
+        });
+      posts.push(options);
+      return response({ ...record, profile_id: "C" });
+    }),
+  );
+  render(panel());
+  const selector = await screen.findByRole("combobox");
+  expect(selector).toHaveValue("B");
+  expect(
+    screen.getByRole("option", { name: /Saved profile unavailable/ }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Prepare paid review quote" }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Choose profile for a new quote" }),
+  );
+  expect(selector).toBeEnabled();
+  fireEvent.change(selector, { target: { value: "C" } });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Prepare paid review quote" }),
+  );
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(JSON.parse(posts[0].body as string)).toEqual({ profile_id: "C" });
 });

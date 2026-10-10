@@ -11,6 +11,8 @@ export const ko = {
   "An operator must provision an existing model profile and budget. Model names, pricing and credentials are never guessed.":
     "운영자가 기존 모델 프로필과 예산을 구성해야 합니다. 모델명·가격·credential을 임의로 정하지 않습니다.",
   "Operator model profile": "운영자 모델 프로필",
+  "Saved profile unavailable": "저장된 프로필을 사용할 수 없음",
+  "Choose profile for a new quote": "새 견적에 사용할 프로필 선택",
   "Project / task": "프로젝트 / 작업",
   "Provider / model / effort": "Provider / 모델 / effort",
   "Maximum calls": "최대 호출 수",
