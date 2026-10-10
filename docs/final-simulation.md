@@ -40,6 +40,6 @@ uv run --frozen python scripts/package_smoke.py
 
 최초 후보의 [전체 CI run 38034517043](https://github.com/yjj3019/IntelligenceAI/actions/runs/38034517043)는 Linux/Windows/macOS arm64/Intel × Python 3.11/3.14의 8개 조합 모두 성공했습니다. POSIX는 각 181 passed/2 skipped, Windows는 각 177 passed/6 skipped였습니다. 실제 scanner 65개 파일의 탐지 0건과 wheel 설치·격리 import·CLI/MCP smoke도 확인했습니다. 새 최종 후보에서는 전체 검증에 더해 동일한 8개 조합에서 seed 3개를 반복합니다. 최종 실행 결과는 PR에 연결된 해당 head의 CI 로그를 기준으로 합니다.
 
-POSIX의 2개 skip은 Windows 전용 검사입니다. Windows의 6개 skip은 실제 POSIX scanner/process group 및 native symlink 권한 부재 관련 사례입니다. skip을 PASS로 바꾸지 않으며 실제 이유는 pytest `-rs` 로그로 보존합니다. Python 3.14의 LangChain/Pydantic v1 호환 경고는 숨기지 않습니다. 현재 범위에서 실패가 없고 최종 정확 head의 8개 job이 모두 성공한 후 부모의 독립 확인을 받아 병합합니다. 보호 우회·force push·history rewrite·branch 삭제·배포는 수행하지 않습니다.
+POSIX의 2개 skip은 `Windows runtime boundary`와 `Windows-specific fail-closed check`입니다. Windows CI에서 확인한 6개 skip은 NUL OS device의 Linux fixture 1개, pinned POSIX scanner 경계 2개, 실제 POSIX process group 3개입니다. symlink 권한이 없는 환경은 해당 fixture가 추가로 skip될 수 있으며 각 실행의 실제 이유를 pytest `-rs` 로그로 보존합니다. skip을 PASS로 바꾸지 않습니다. Python 3.14의 LangChain/Pydantic v1 호환 경고는 숨기지 않습니다. 현재 범위에서 실패가 없고 최종 정확 head의 8개 job이 모두 성공한 후 부모의 독립 확인을 받아 병합합니다. 보호 우회·force push·history rewrite·branch 삭제·배포는 수행하지 않습니다.
 
 성능·비용 벤치마크나 live E2E 결과가 아닙니다. 반복에서 실패가 없다는 관찰은 일반적인 race 부재·OS sandbox·hostile process containment·exactly-once를 보장하지 않습니다. 실제 vendor 실행·credential 강제·Windows process tree는 UNVERIFIED/비활성 상태입니다. Library 원문 전체는 read로 확인했지만 Windows materialize helper의 `os.setxattr` 미지원 blocker는 남아 있습니다.
