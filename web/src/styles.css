@@ -1,4 +1,10 @@
 @import url("/fonts.css");
+.pc-panel code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
 :root {
   font-family: Inter, "Segoe UI", Arial, sans-serif;
   color: #242c3b;

@@ -40,6 +40,7 @@ import { api, ApiError, message, mutation } from "./api";
 import { LocaleProvider, LanguageSwitcher, useLocale } from "./i18n";
 import { PaidReviewPanel } from "./PaidReviewPanel";
 import { LocalCLIPanel } from "./LocalCLIPanel";
+import { PCPanel } from "./PCPanel";
 import {
   demoAudit,
   demoConnections,
@@ -2272,6 +2273,21 @@ function WorkspaceApp() {
                 ))}
               {current.page === "connections" && (
                 <>
+                  {active && session && project?.role === "owner" && (
+                    <PCPanel
+                      key={JSON.stringify([
+                        session.user.id,
+                        session.csrf,
+                        project.id,
+                      ])}
+                      projectId={project.id}
+                      csrf={session.csrf}
+                      onAuthorityLost={(status) => {
+                        clearPrivate();
+                        setAuthNeeded(status === 401);
+                      }}
+                    />
+                  )}
                   <section className="panel">
                     <h2>{t("Connection & environment status")}</h2>
                     <p className="muted">

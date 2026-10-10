@@ -264,6 +264,37 @@ local_cli_requests = Table(
     UniqueConstraint("task_id", "generation"),
 )
 
+# Additive schema: a PC has one owner/project/provider and one approved immutable profile.
+pc_runners = Table(
+    "web_pc_runners",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("project_id", ForeignKey(projects.c.id), nullable=False),
+    Column("actor_id", ForeignKey(users.c.id), nullable=False),
+    Column("provider", String(16), nullable=False),
+    Column("pair_hash", String(64), unique=True),
+    Column("token_hash", String(64), unique=True),
+    Column("state", String(16), nullable=False),
+    Column("expires_at", BigInteger, nullable=False),
+    Column("manifest", JSON),
+    Column("manifest_digest", String(64)),
+    Column("profile_id", ForeignKey(local_cli_profiles.c.id)),
+)
+pc_attempts = Table(
+    "web_pc_attempts",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("runner_id", ForeignKey(pc_runners.c.id), nullable=False),
+    Column("request_id", ForeignKey(local_cli_requests.c.id), unique=True, nullable=False),
+    Column("binding_digest", String(64), nullable=False),
+    Column("lease", String(64), nullable=False),
+    Column("expires_at", BigInteger, nullable=False),
+    Column("deadline", BigInteger, nullable=False),
+    Column("state", String(16), nullable=False),
+    Column("result_digest", String(64)),
+    Column("result", JSON),
+)
+
 
 def now() -> int:
     return int(time.time())

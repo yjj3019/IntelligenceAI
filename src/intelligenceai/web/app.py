@@ -16,6 +16,15 @@ from intelligenceai.web.auth import ServerSessions
 from intelligenceai.web.config import Settings
 from intelligenceai.web.contracts import ApprovalInput, EmptyInput, MemberInput, TaskInput, preview
 from intelligenceai.web.errors import SafeErrors
+from intelligenceai.web.pc_contracts import (
+    PC_ROUTES,
+    AttemptInput,
+    ConfirmInput,
+    ExchangeInput,
+    PairInput,
+    ResultInput,
+)
+from intelligenceai.web.pc_service import PCs
 from intelligenceai.web.service import Problem, Service, session_data
 from intelligenceai.web.store import engine, execution_grants, now, users
 
@@ -64,9 +73,13 @@ def boundary(app, origin, *, secure):
             response = JSONResponse({"error": "host_rejected"}, status_code=400)
         elif request.headers.get("origin") not in {None, origin}:
             response = JSONResponse({"error": "origin_rejected"}, status_code=403)
-        elif request.method not in {"GET", "HEAD"} and (
-            request.headers.get("origin") != origin
-            or request.headers.get("sec-fetch-site") not in {None, "same-origin"}
+        elif (
+            request.method not in {"GET", "HEAD"}
+            and (
+                request.headers.get("origin") != origin
+                or request.headers.get("sec-fetch-site") not in {None, "same-origin"}
+            )
+            and request.url.path not in PC_ROUTES
         ):
             response = JSONResponse({"error": "same_origin_required"}, status_code=403)
         elif (
@@ -114,6 +127,7 @@ def create_app(settings: Settings, *, db=None, testing=False):
         raise ValueError("production requires PostgreSQL")
     app = FastAPI(title="IntelligenceAI private console", docs_url=None, redoc_url=None)
     service = Service(db)
+    pcs = PCs(db, testing=testing)
     app.state.service = service
     oauth = OAuth()
     oauth.register(
@@ -144,6 +158,61 @@ def create_app(settings: Settings, *, db=None, testing=False):
         if request.headers.get("content-type", "").split(";")[0] != "application/json":
             raise Problem(415, "json_required")
         return user["id"], request.headers.get("idempotency-key", "")
+
+    def pc_token(request):
+        # Cookie/session/CSRF authority never substitutes for a runner capability.
+        value = request.headers.get("authorization", "")
+        if request.headers.get("origin") or request.headers.get("sec-fetch-site"):
+            raise Problem(403, "pc_machine_client_required")
+        if request.headers.get("content-type", "").split(";")[0] != "application/json":
+            raise Problem(415, "json_required")
+        token = value.removeprefix("Bearer ")
+        if (
+            value == token
+            or len(token) != 43
+            or not all(char.isascii() and (char.isalnum() or char in "_-") for char in token)
+        ):
+            raise Problem(401, "pc_authorization_required")
+        return token
+
+    @app.get("/api/projects/{project_id}/pcs")
+    def pc_list(request: Request, project_id: str):
+        return pcs.list(actor(request)["id"], project_id)
+
+    @app.post("/api/projects/{project_id}/pcs/pair")
+    def pc_pair(request: Request, project_id: str, data: PairInput):
+        user, key = mutation(request)
+        return pcs.pair(user, project_id, key, data)
+
+    @app.post("/api/projects/{project_id}/pcs/{runner_id}/confirm")
+    def pc_confirm(request: Request, project_id: str, runner_id: str, data: ConfirmInput):
+        user, key = mutation(request)
+        return pcs.change(user, project_id, runner_id, key, data, "confirm")
+
+    @app.post("/api/projects/{project_id}/pcs/{runner_id}/revoke")
+    def pc_revoke(request: Request, project_id: str, runner_id: str, data: EmptyInput):
+        user, key = mutation(request)
+        return pcs.change(user, project_id, runner_id, key, data, "revoke")
+
+    @app.post("/api/pc/exchange")
+    def pc_exchange(request: Request, data: ExchangeInput):
+        return pcs.exchange(pc_token(request), data)
+
+    @app.post("/api/pc/claim")
+    def pc_claim(request: Request, data: EmptyInput):
+        return pcs.claim(pc_token(request))
+
+    @app.post("/api/pc/start")
+    def pc_start(request: Request, data: AttemptInput):
+        return pcs.start(pc_token(request), data)
+
+    @app.post("/api/pc/heartbeat")
+    def pc_heartbeat(request: Request, data: AttemptInput):
+        return pcs.heartbeat(pc_token(request), data)
+
+    @app.post("/api/pc/result")
+    def pc_result(request: Request, data: ResultInput):
+        return pcs.result(pc_token(request), data)
 
     @app.get("/healthz")
     def health():

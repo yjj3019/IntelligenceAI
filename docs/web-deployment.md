@@ -1,5 +1,12 @@
 # GUI 실행·배포 안내
 
+[내 PC 연결](pc-connection.ko.md)은 기존 same-origin API와 PostgreSQL을 사용한다.
+`web_pc_runners`, `web_pc_attempts`를 검토한 schema 초기화·migration 절차로 추가한다.
+새 서버 비밀·issuer·PC inbound 포트는 필요하지 않다. reverse proxy는 요청 본문과
+Authorization 헤더를 기록하지 않아야 한다. 이번 작업은 합성 테스트이며 실제 계정
+pairing·토큰 저장과 운영 HTTPS 배포는 수행하지 않았다. 승인된 공식 mcp-ssh 경로를
+사용할 수 없어 배포는 계속 차단된 상태다.
+
 [private dispatcher 계약](paid-dispatch.ko.md)에 요청에서 기존 worker로 이어지는
 코드 경로와 운영 조건을 기록했다. `web_paid_dispatches`는 DB 백업·schema 검토 후
 기존 초기화 절차로 추가한다. 외부 signer와 독립 공개키 역할 설정, 유효한 제어 증거,

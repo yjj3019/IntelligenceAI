@@ -27,6 +27,7 @@ type Profile = {
   provider: string;
   version: string;
   scope: string;
+  transport?: string;
   installation: string;
   authentication?: string;
   availability: string;
@@ -64,6 +65,7 @@ type RecordValue = {
     live_model: string;
     local_termination_confirmed: boolean;
     remote_cancellation: string;
+    device_cleanup_reported?: boolean;
     usage?: Usage;
   };
 };
@@ -345,6 +347,13 @@ export function LocalCLIPanel({
                 {profile.authentication || t("Authentication not checked")} ·{" "}
                 {stateLabel(profile.availability)} · {profile.scope}
               </p>
+              {profile.transport === "OUTBOUND_PC" && (
+                <p className="notice">
+                  {t(
+                    "This profile runs on your approved PC over outbound HTTPS. The direct DB worker is separate.",
+                  )}
+                </p>
+              )}
               {profile.restriction && (
                 <p role="status">{profile.restriction}</p>
               )}
@@ -422,8 +431,15 @@ export function LocalCLIPanel({
                   <p>
                     {stateLabel(record.result.availability)} ·{" "}
                     <code>{record.result.availability}</code> ·{" "}
-                    {record.result.scope} · {record.result.live_model}
+                    {t(record.result.scope)} · {record.result.live_model}
                   </p>
+                  {record.result.scope === "PC_REPORTED" && (
+                    <p className="notice">
+                      {t("Device cleanup reported")}:{" "}
+                      {String(record.result.device_cleanup_reported)}.{" "}
+                      {t("Device results and usage are unverified reports.")}
+                    </p>
+                  )}
                   <p>
                     {t("Local process stopped")}:{" "}
                     {String(record.result.local_termination_confirmed)} ·{" "}

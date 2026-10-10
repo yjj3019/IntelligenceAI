@@ -2,6 +2,39 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  "This profile runs on your approved PC over outbound HTTPS. The direct DB worker is separate.":
+    "이 프로필은 승인한 내 PC에서 HTTPS 연결로 실행합니다. DB에 직접 연결하는 worker와 구분됩니다.",
+  "Device cleanup reported": "장치가 보고한 종료",
+  "Device results and usage are unverified reports.":
+    "장치 결과와 사용량은 서버가 검증하지 않은 보고입니다.",
+  "Your PC connections": "내 PC 연결",
+  "Pair your own PC, then verify its provider and fingerprints before granting access. Each task still needs separate approval.":
+    "내 PC를 등록하고 제공자와 장치 지문을 확인한 뒤 연결을 승인하세요. 각 작업은 별도 승인이 필요합니다.",
+  "Your PC uses outbound HTTPS. No server DB or OIDC secret is shared. Device results, usage and cleanup are reports, not server-verified isolation.":
+    "PC에서 서버로 HTTPS 연결을 요청합니다. 서버 DB나 OIDC 비밀은 전달하지 않습니다. 결과·사용량·종료 상태는 장치의 보고이며 서버가 검증한 격리 증거가 아닙니다.",
+  "Create one-time pairing code": "일회용 등록 코드 만들기",
+  "Refresh devices": "장치 새로고침",
+  "Enter this code only in your own PC client within five minutes. It is shown once and is not stored in browser storage.":
+    "5분 안에 내 PC 클라이언트에만 이 코드를 입력하세요. 한 번만 표시하며 브라우저 저장소에 저장하지 않습니다.",
+  "Hide pairing code": "등록 코드 숨기기",
+  "Device fingerprints": "장치 지문",
+  "Binary digest": "실행 파일 지문",
+  "Runtime digest": "실행 구성 지문",
+  "I verified this device and its fingerprints on my PC.":
+    "내 PC에서 이 장치와 지문을 확인했습니다.",
+  "Approve this PC": "이 PC 승인",
+  "Review disconnect": "연결 해제 검토",
+  "Disconnecting blocks new starts. An already authorized call stops best effort; unresolved work is never replayed automatically.":
+    "연결을 해제하면 새 실행을 차단합니다. 이미 승인된 호출은 가능한 범위에서 중단하며 실행 여부가 불명인 작업은 자동 재실행하지 않습니다.",
+  "Disconnect this PC": "이 PC 연결 해제",
+  "Keep connected": "연결 유지",
+  OUTBOUND_PC: "내 PC의 HTTPS 연결",
+  PC_REPORTED: "PC 보고",
+  USER_DEVICE_REPORT: "사용자 장치 보고",
+  DEVICE_REPORTED: "장치 보고",
+  PAIRING: "등록 코드 대기",
+  PENDING: "장치 승인 대기",
+  ACTIVE: "연결 승인됨",
   "Local CLI invocations": "로컬 CLI 실행 횟수",
   "Native internal model calls are reported separately.":
     "공급자 내부 모델 호출 수는 별도로 표시합니다.",

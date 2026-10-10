@@ -115,7 +115,9 @@ class Service:
             conn.execute(
                 select(local_cli_requests).where(
                     local_cli_requests.c.task_id == row["id"],
-                    local_cli_requests.c.state.in_(["STARTING", "RUNNING", "UNKNOWN", "COMPLETED"]),
+                    local_cli_requests.c.state.in_(
+                        ["STARTING", "RUNNING", "UNKNOWN", "COMPLETED", "FAILED"]
+                    ),
                 )
             )
             .mappings()

@@ -1,5 +1,16 @@
 # 웹 GUI 검증 기록
 
+## 내 PC 연결 검증 범위
+
+`tests/test_pc_connection.py`는 합성 등록·명시적 확인·회수·만료, owner/project/runner
+교차 접근, 후보·정책·generation 변경, 일회성 start, 취소·lease·stale result, 위조
+경로·명령·principal, 원문 redaction과 동일 결과 재전송을 검사한다. PC 클라이언트는
+서버 DB URL·OIDC 설정 없이 fake CLI를 실행하며 start·upload 응답 유실 뒤 재호출을
+금지한다. 임시 PostgreSQL의 독립 연결 claim/start 회귀는 기존 web CI에 추가했다.
+UI는 등록 코드의 메모리 한정, 명시적 확인·해제, 중복 클릭, 권한 회수, 이동 뒤 늦은
+응답 차단과 한국어를 검사한다. 실제 계정 등록·운영 배포·추가 모델 호출·브라우저 QA는
+미실시다. SQLite 검사를 PostgreSQL 잠금 검증이나 운영 성공으로 확대하지 않는다.
+
 ## fixture 통합 최종 검증
 
 완료 후 취소와 취소 후 완료는 현재 generation의 검증된 정적 receipt와 lease 종료를 근거로 `CANCELLED`에 수렴합니다. 완료 proof가 없는 `FINISHED`는 취소 완료로 과장하지 않고 거부합니다. 미시작 receipt는 별도 `kind: never_started`로 조회·표시하며 steps를 읽지 않습니다. SSE의 artifact ID·digest·generation 변경은 후보 본문을 무효화하고 지연된 이전 응답을 폐기합니다. 만료·정책 불일치 권한의 100개 작업 뒤에 있는 정상 프로젝트를 같은 claim 호출에서 찾도록 keyset 페이지를 순회합니다.

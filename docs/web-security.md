@@ -1,5 +1,13 @@
 # Web security and remaining evidence
 
+[PC capabilities](pc-connection.md) are owner/project/provider scoped, hashed,
+explicitly approved, expired/revoked and limited to the existing consent queue.
+Only the exact five machine routes accept header bearer authority without browser
+Origin; cookies are ignored there. Server-selected artifacts redact secrets before
+storage. Atomic start is consumed once; a remote handoff cannot hold DB locks.
+Timeout/response loss never justifies model replay. Device success/usage/cleanup
+are unverified reports and cannot attest OS isolation or billing.
+
 The [private dispatcher](paid-dispatch.md) verifies exact externally issued
 statements and rechecks consent/profile/session/project authority after signing.
 Request consumption, budget hold and private delivery commit together. Durable

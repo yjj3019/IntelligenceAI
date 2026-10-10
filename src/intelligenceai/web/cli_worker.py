@@ -132,6 +132,8 @@ class Worker:
                 .mappings()
                 .one()
             )
+            if profile["metadata"].get("transport") == "OUTBOUND_PC":
+                raise ValueError("outbound_pc_requires_pc_client")
             conn.execute(
                 select(users.c.id)
                 .where(users.c.id == profile["actor_id"])
