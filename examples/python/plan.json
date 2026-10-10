@@ -1,0 +1,7 @@
+{
+  "steps": [
+    {"step_id":"write","role":"implement","mode":"write","allowed_paths":["answer.py"]},
+    {"step_id":"shape","dependencies":["write"],"result_refs":["write"],"role":"review","mode":"read_only","executor":"static","provider":"local","model":"static-v1","effort":null,"allowed_paths":["answer.py"],"checks":[{"kind":"python_ast","path":"answer.py","expected_literals":{"ANSWER":42}}]},
+    {"step_id":"independent","dependencies":["write"],"result_refs":["write"],"role":"analyze","mode":"read_only","executor":"static","provider":"local","model":"static-v1","effort":null,"allowed_paths":["module.py"],"checks":[{"kind":"python_ast","path":"module.py","required_symbols":["preserved"]}]}
+  ]
+}

@@ -12,6 +12,13 @@ from .security import SafetyError
 FIXTURE_FILE = "answer.py"
 
 
+def profile_path(profile: str) -> str:
+    paths = {"answer-v1": FIXTURE_FILE, "json-config-v1": "settings.json"}
+    if profile not in paths:
+        raise SafetyError("unregistered fixture profile")
+    return paths[profile]
+
+
 def implement(
     workspace: Path,
     round_number: int,
@@ -20,9 +27,11 @@ def implement(
     ledger: Ledger,
     invocation_id: str,
     generation: int,
+    profile: str = "answer-v1",
 ) -> dict:
     # Only trusted constant bytes. Requests and worker text are never commands or code.
-    path = workspace / FIXTURE_FILE
+    name = profile_path(profile)
+    path = workspace / name
     value = (
         41
         if scenario in {"repair", "exhaust"} and (round_number == 0 or scenario == "exhaust")
@@ -40,7 +49,12 @@ def implement(
         descriptor, temporary = tempfile.mkstemp(prefix=".iai-write-", dir=workspace)
         try:
             with os.fdopen(descriptor, "wb") as output:
-                output.write(f"ANSWER = {value}\n".encode())
+                payload = (
+                    f"ANSWER = {value}\n"
+                    if profile == "answer-v1"
+                    else '{"enabled":true,"version":' + str(value) + "}\n"
+                )
+                output.write(payload.encode())
                 output.flush()
                 os.fsync(output.fileno())
             # Replace the directory entry with a fresh inode; never follow/open its target.
@@ -55,13 +69,18 @@ def implement(
         "provider": "fixture",
         "model": "deterministic-v1",
         "model_verification": "FIXTURE_ONLY",
-        "artifact": FIXTURE_FILE,
+        "artifact": name,
     }
 
 
-def evaluate(workspace: Path) -> bool:
+def evaluate(workspace: Path, profile: str = "answer-v1") -> bool:
     """Real deterministic fixture assertion. Never import/execute target code."""
     try:
+        if profile == "json-config-v1":
+            import json
+
+            value = json.loads((workspace / profile_path(profile)).read_text())
+            return type(value) is dict and value == {"enabled": True, "version": 42}
         node = ast.parse((workspace / FIXTURE_FILE).read_text())
         return (
             len(node.body) == 1
@@ -72,15 +91,17 @@ def evaluate(workspace: Path) -> bool:
             and isinstance(node.body[0].value, ast.Constant)
             and node.body[0].value.value == 42
         )
-    except (OSError, SyntaxError):
+    except (OSError, SyntaxError, ValueError):
         return False
 
 
-def verify(workspace: Path, candidate_id: str) -> Evidence:
-    passed = evaluate(workspace)
+def verify(workspace: Path, candidate_id: str, profile: str = "answer-v1") -> Evidence:
+    passed = evaluate(workspace, profile)
     return Evidence(
         candidate_id=candidate_id,
-        command_profile="fixture-assertion-v1",
+        command_profile="fixture-assertion-v1"
+        if profile == "answer-v1"
+        else "fixture-json-config-v1",
         tool_version="intelligenceai-fixture-v1",
         environment="local",
         exit_code=0 if passed else 1,
@@ -90,13 +111,13 @@ def verify(workspace: Path, candidate_id: str) -> Evidence:
     )
 
 
-def review(workspace: Path, candidate_id: str) -> list[Finding]:
+def review(workspace: Path, candidate_id: str, profile: str = "answer-v1") -> list[Finding]:
     # Independent fixture review consumes candidate bytes, not the implementer's conclusion.
-    if evaluate(workspace):
+    if evaluate(workspace, profile):
         return []
     return [
         Finding(
-            finding_id="fixture-answer-value",
+            finding_id="fixture-answer-value" if profile == "answer-v1" else "fixture-json-value",
             candidate_id=candidate_id,
             source_invocation="fixture-review-v1",
             evidence="ANSWER assertion reproduced",

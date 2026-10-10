@@ -29,6 +29,8 @@
 
 ## 실제 P0 관찰
 
+다단계 추가 구현: steps[0]와 단일 파일에 의존하던 controller 실행을 typed DAG로 교체했습니다. step receipt·result reference·직렬 writer·고정 후보의 병렬 정적 검토·실패 dependency 차단·기존 repair decision을 연결했습니다. 정적 parser와 두 소유 샘플의 3-step E2E는 `tests/test_dag.py`에서 확인합니다. 임의 프로젝트 test/build 실행은 계속 UNVERIFIED입니다.
+
 추가 구현: 버전별 PreparedInvocation, Omnilane jobs argv, MCO partial 결과, PAL codereview 다단계 메시지, Gemini/agy 별도 parser와 테스트 전용 lifecycle harness를 저장했습니다. 공개 live 실행은 불변 차단합니다. [현재 계약](protocols.md)과 `tests/test_protocols.py`를 대조합니다.
 
 2026-10-10에 프로젝트 안에서 명령 존재와 버전을 확인했습니다. Git 2.54.0.windows.1, Python 3.14.4, uv 0.11.11, Claude Code 2.1.296, Codex CLI 0.162.0, Grok 1.0.50입니다. Omnilane/MCO/PAL/Gitleaks는 PATH에서 발견하지 못했습니다. 광범위 홈/다른 앱 스캔, 인증 변경, 실제 모델 호출, doctor/detect, OS 보안 설정 변경은 하지 않았습니다.

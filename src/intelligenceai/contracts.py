@@ -62,6 +62,19 @@ class Budgets(Contract):
     same_failure_limit: int = Field(default=3, ge=1, le=3)
 
 
+class Check(Contract):
+    kind: Literal["file_exists", "json_shape", "python_ast", "test_command", "build_command"]
+    path: str
+    required_keys: list[str] = Field(default_factory=list, max_length=64)
+    required_symbols: list[str] = Field(default_factory=list, max_length=64)
+    expected_literals: dict[str, int | str | bool | None] = Field(default_factory=dict)
+
+    @field_validator("path")
+    @classmethod
+    def path_scope(cls, value):
+        return safe_path(value)
+
+
 class Step(Contract):
     step_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
     dependencies: list[str] = Field(default_factory=list)
@@ -76,6 +89,9 @@ class Step(Contract):
     fallback_allowed: Literal[False] = False
     timeout_seconds: int = Field(default=30, ge=1, le=300)
     repair_round: int = Field(default=0, ge=0, le=2)
+    result_refs: list[str] = Field(default_factory=list)
+    profile: Literal["answer-v1", "json-config-v1"] = "answer-v1"
+    checks: list[Check] = Field(default_factory=list, max_length=32)
 
     @field_validator("allowed_paths")
     @classmethod
@@ -88,6 +104,12 @@ class Step(Contract):
             raise ValueError("implementation requires write mode and a writer lease")
         if self.role != "implement" and self.mode != "read_only":
             raise ValueError("reviews and analysis must be read only")
+        if not set(self.result_refs) <= set(self.dependencies):
+            raise ValueError("result refs must name explicit dependencies")
+        if any(c.path not in self.allowed_paths for c in self.checks):
+            raise ValueError("checker path outside step read scope")
+        if self.executor == "static" and (self.mode != "read_only" or not self.checks):
+            raise ValueError("static executor requires read-only declarative checks")
         return self
 
 
@@ -101,8 +123,6 @@ class Plan(Contract):
         ids = [s.step_id for s in self.steps]
         if len(ids) != len(set(ids)):
             raise ValueError("duplicate step")
-        if sum(s.mode == "write" for s in self.steps) > 1:
-            raise ValueError("initial controller supports one writer step")
         done: set[str] = set()
         for _ in self.steps:
             for s in self.steps:
@@ -149,6 +169,18 @@ class Candidate(Contract):
     tree_digest: str
     changed_paths: list[str]
     artifact_digests: dict[str, str]
+
+
+class StepResult(Contract):
+    step_id: str
+    round_number: int
+    generation: int
+    status: Literal["SUCCEEDED", "FAILED", "UNVERIFIED", "BLOCKED"]
+    candidate_id: str
+    result_id: str
+    references: dict[str, str]
+    evidence: list[dict]
+    findings: list[dict]
 
 
 class Finding(Contract):

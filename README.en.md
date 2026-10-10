@@ -8,6 +8,8 @@ This is a foundation, not a finished general AI assistant. It does not authentic
 
 ## Install and run
 
+The controller now executes typed DAGs with durable per-step receipts, explicit result references, serialized fixture writers and parallel static reviewers over one frozen candidate. File existence, JSON shape and Python AST profiles inspect real bytes without executing project code. See [DAG guide](docs/dag.md) and the owned Python/JSON sample plans under `examples`. Test/build commands remain disabled.
+
 Version-scoped argv/stdin preparation, separate provider result parsers and offline lifecycle regressions are implemented in `protocols.py`. See [protocol contracts](docs/protocols.md). Production dispatch is unconditionally disabled; public inputs cannot select fake transports or enable the live gate.
 
 Use Python 3.11+, Git, and an already installed uv. Dependencies and hashes are fixed in `uv.lock`; sources and licenses are in [dependencies](docs/dependencies.md).

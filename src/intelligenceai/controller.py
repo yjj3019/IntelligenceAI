@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import time
 import uuid
 from pathlib import Path
 from typing import TypedDict
@@ -12,9 +13,9 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from . import fixture, workspace
+from . import dag, fixture, workspace
 from .approvals import decide, dry_run
-from .contracts import Action, Candidate, Plan, State, Step, Task
+from .contracts import Action, Candidate, Evidence, Finding, Plan, State, Step, Task
 from .ledger import Ledger
 from .registry import authorize_step
 from .scanner import GitleaksScanner
@@ -84,12 +85,7 @@ class Controller:
         if scenario not in {"success", "repair", "exhaust"}:
             raise SafetyError("unknown fixture scenario")
         plan = Plan.model_validate((plan or fixture_plan()).model_dump())
-        if len(plan.steps) != 1 or plan.steps[0].role != "implement":
-            raise SafetyError("only the documented single fixture plan is executable")
-        for step in plan.steps:
-            authorize_step(step)
-        if plan.steps[0].allowed_paths != [fixture.FIXTURE_FILE]:
-            raise SafetyError("fixture supports only answer.py")
+        dag.validate_executable_plan(plan)
         repo, base = workspace.identity(repo)
         if self.root.is_relative_to(repo):
             raise SafetyError("controller state must be outside the user's repository")
@@ -121,9 +117,11 @@ class Controller:
             raise RuntimeError("injected crash at " + boundary)
 
     def _execute(self, state: GraphState) -> dict:
+        return dag.execute(self, state)
+
+    def _fixture_step(self, state: GraphState, step: Step) -> dict:
         tid, round_number = state["task_id"], state.get("round_number", 0)
         data = self.metadata(tid)
-        step = Plan.model_validate(data["plan"]).steps[0]
         authorize_step(step)
         generation = self._generation(state)
         self.ledger.state(tid, State.RUNNING, expected_generation=generation)
@@ -146,6 +144,7 @@ class Controller:
             ledger=self.ledger,
             invocation_id=record["id"],
             generation=generation,
+            profile=step.profile,
         )
         self._crash("effect")
         self.ledger.receive(record["id"], record["generation"], receipt)
@@ -154,9 +153,9 @@ class Controller:
 
     def candidate(self, task_id: str) -> Candidate:
         data = self.metadata(task_id)
-        step = Plan.model_validate(data["plan"]).steps[0]
+        plan = Plan.model_validate(data["plan"])
         return workspace.freeze(
-            Path(data["workspace"]), data["base_sha"], data["initial"], step.allowed_paths
+            Path(data["workspace"]), data["base_sha"], data["initial"], dag.write_scope(plan)
         )
 
     def _verify(self, state: GraphState) -> dict:
@@ -171,10 +170,35 @@ class Controller:
         evidence = [
             self.scanner.scan(outbound, candidate.candidate_id, "outbound-gitleaks-v1"),
             self.scanner.scan(payloads, candidate.candidate_id, "candidate-gitleaks-v1"),
-            fixture.verify(target, candidate.candidate_id),
         ]
         self.ledger.state(tid, State.REVIEWING, expected_generation=generation)
-        findings = fixture.review(target, candidate.candidate_id)
+        plan = Plan.model_validate(data["plan"])
+        findings = []
+        for step in plan.steps:
+            if step.mode == "write":
+                evidence.append(fixture.verify(target, candidate.candidate_id, step.profile))
+                findings.extend(fixture.review(target, candidate.candidate_id, step.profile))
+        step_rows = self.ledger.steps(tid, state.get("round_number", 0))
+        for row in step_rows:
+            result = row["result"]
+            if not result:
+                raise SafetyError("DAG has unfinished step receipts")
+            if result["candidate_id"] == candidate.candidate_id:
+                evidence.extend(Evidence.model_validate(e) for e in result["evidence"])
+                findings.extend(Finding.model_validate(f) for f in result["findings"])
+            elif result["evidence"]:
+                evidence.append(
+                    Evidence(
+                        candidate_id=candidate.candidate_id,
+                        command_profile="stale-step-evidence",
+                        tool_version="controller-v1",
+                        environment="local",
+                        exit_code=None,
+                        status="UNVERIFIED",
+                        redacted_log="Earlier DAG result is bound to a previous candidate",
+                        timestamp=time.time(),
+                    )
+                )
         # Check the candidate again after every inspection; changed bytes invalidate all evidence.
         if self.candidate(tid) != candidate:
             raise SafetyError("candidate changed during verification")
@@ -182,8 +206,9 @@ class Controller:
             "candidate": candidate.model_dump(),
             "evidence": [e.model_dump() for e in evidence],
             "findings": [f.model_dump() for f in findings],
-            "allowed_paths": [fixture.FIXTURE_FILE],
-            "scope": "fixture",
+            "allowed_paths": dag.write_scope(plan),
+            "scope": "offline-dag",
+            "steps": [r["result"] for r in step_rows],
             "live_adapters": "UNVERIFIED",
             "external_action_count": 0,
         }
@@ -198,6 +223,9 @@ class Controller:
         generation = self._generation(state)
         blockers = [f for f in result["findings"] if f["blocking"] and f["reproduced"]]
         if blockers:
+            if not any(s.mode == "write" for s in Plan.model_validate(task["data"]["plan"]).steps):
+                self.ledger.state(tid, State.BLOCKED, expected_generation=generation)
+                return {"done": True}
             signature = digest([f["finding_id"] for f in blockers])
             operation_id = digest(
                 [
@@ -320,5 +348,6 @@ class Controller:
                     {"id": r["id"], "status": r["status"], "generation": r["generation"]}
                     for r in self.ledger.invocations(task_id)
                 ],
+                "steps": self.ledger.steps(task_id),
             }
         )

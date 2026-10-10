@@ -40,6 +40,10 @@ class Ledger:
                 task_id TEXT NOT NULL, operation_id TEXT NOT NULL,
                 signature TEXT NOT NULL, generation INTEGER NOT NULL, allowed INTEGER NOT NULL,
                 PRIMARY KEY(task_id, operation_id));
+            CREATE TABLE IF NOT EXISTS step_runs (
+                task_id TEXT NOT NULL, step_id TEXT NOT NULL, round INTEGER NOT NULL,
+                generation INTEGER NOT NULL, status TEXT NOT NULL, result TEXT,
+                PRIMARY KEY(task_id, step_id, round));
         """)
 
     def close(self):
@@ -362,4 +366,51 @@ class Ledger:
                 "SELECT id,status,generation,data,receipt FROM invocations WHERE task_id=?",
                 (task_id,),
             )
+        ]
+
+    def step_start(self, task_id: str, step_id: str, round_number: int, generation: int):
+        with self.transaction():
+            task = self.task(task_id)
+            if task["generation"] != generation or task["state"] != State.RUNNING:
+                raise SafetyError("stale or inactive DAG step")
+            self.db.execute(
+                "INSERT OR IGNORE INTO step_runs VALUES(?,?,?,?,?,NULL)",
+                (task_id, step_id, round_number, generation, "STARTING"),
+            )
+
+    def step_finish(self, task_id: str, result):
+        from .contracts import StepResult
+
+        result = StepResult.model_validate(result.model_dump())
+        with self.transaction():
+            task = self.task(task_id)
+            if task["generation"] != result.generation or task["state"] != State.RUNNING:
+                raise SafetyError("stale or cancelled DAG step result")
+            old = self.db.execute(
+                "SELECT result FROM step_runs WHERE task_id=? AND step_id=? AND round=?",
+                (task_id, result.step_id, result.round_number),
+            ).fetchone()
+            encoded = canonical(clean(result.model_dump()))
+            if old and old[0] and old[0] != encoded:
+                raise SafetyError("conflicting immutable DAG step receipt")
+            self.db.execute(
+                "INSERT OR REPLACE INTO step_runs VALUES(?,?,?,?,?,?)",
+                (
+                    task_id,
+                    result.step_id,
+                    result.round_number,
+                    result.generation,
+                    result.status,
+                    encoded,
+                ),
+            )
+
+    def steps(self, task_id: str, round_number: int | None = None) -> list[dict]:
+        rows = self.db.execute(
+            "SELECT * FROM step_runs WHERE task_id=? ORDER BY round,step_id", (task_id,)
+        )
+        return [
+            dict(r) | {"result": json.loads(r["result"]) if r["result"] else None}
+            for r in rows
+            if round_number is None or r["round"] == round_number
         ]

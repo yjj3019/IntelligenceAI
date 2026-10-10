@@ -21,6 +21,8 @@ Linux에서는 `uv run --frozen intelligenceai capabilities`를 사용합니다.
 
 ## 하나의 작업 실행
 
+여러 step을 실행하는 [DAG·정적 검사 안내](docs/dag.md)와 Python/JSON 샘플 계획을 제공합니다. 실제 파일 존재·JSON·AST 검사는 사용자 코드를 실행하지 않습니다. 정적 검토는 고정 후보 바이트를 사용하고 writer는 직렬화합니다. fixture profile은 controller와 분리돼 있습니다.
+
 최소 한 개의 커밋이 있는 테스트용 Git 저장소를 준비합니다. 상태 폴더는 대상 저장소 밖에 둡니다. controller는 커밋된 HEAD에서 detached worktree를 만들며, 원래 checkout의 미커밋 변경을 복사하거나 초기화하지 않습니다.
 
 ```powershell

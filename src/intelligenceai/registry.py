@@ -14,6 +14,13 @@ class Capability:
 
 
 CAPABILITIES = {
+    "static": Capability(
+        "static",
+        ("local",),
+        True,
+        "STATIC_ONLY",
+        "Declarative parsers only; project code and test/build execution disabled",
+    ),
     "fixture": Capability(
         "fixture",
         ("fixture",),
@@ -66,10 +73,17 @@ def registry() -> list[dict]:
 def authorize_step(step: Step):
     step = Step.model_validate(step.model_dump())
     # A mutable capability report or environment variable cannot enable live execution.
-    if step.executor != "fixture":
+    if step.executor not in {"fixture", "static"}:
         raise SafetyError("live executor dispatch is unconditionally disabled")
     cap = CAPABILITIES.get(step.executor)
     if not cap or not cap.enabled or step.provider not in cap.providers:
         raise SafetyError("executor/provider capability disabled or unverified")
     if step.executor == "fixture" and (step.lane != "fixture" or step.model != "deterministic-v1"):
         raise SafetyError("fixture cannot stand in for a requested vendor/model")
+    if step.executor == "static" and (
+        step.provider != "local"
+        or step.model != "static-v1"
+        or step.lane != "fixture"
+        or step.effort is not None
+    ):
+        raise SafetyError("static checker cannot stand in for a vendor/model")

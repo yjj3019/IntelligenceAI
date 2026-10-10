@@ -1,0 +1,7 @@
+{
+  "steps": [
+    {"step_id":"write","role":"implement","mode":"write","profile":"json-config-v1","allowed_paths":["settings.json"]},
+    {"step_id":"shape","dependencies":["write"],"result_refs":["write"],"role":"review","mode":"read_only","executor":"static","provider":"local","model":"static-v1","effort":null,"allowed_paths":["settings.json"],"checks":[{"kind":"json_shape","path":"settings.json","required_keys":["enabled","version"],"expected_literals":{"enabled":true,"version":42}}]},
+    {"step_id":"independent","dependencies":["write"],"result_refs":["write"],"role":"analyze","mode":"read_only","executor":"static","provider":"local","model":"static-v1","effort":null,"allowed_paths":["manifest.json"],"checks":[{"kind":"json_shape","path":"manifest.json","required_keys":["name"]}]}
+  ]
+}

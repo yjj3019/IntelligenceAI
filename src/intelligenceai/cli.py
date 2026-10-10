@@ -38,7 +38,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def load_plan(path: Path | None) -> Plan:
-    return Plan.model_validate_json(path.read_text()) if path else fixture_plan()
+    return Plan.model_validate_json(path.read_text(encoding="utf-8")) if path else fixture_plan()
 
 
 def main(argv=None) -> int:
