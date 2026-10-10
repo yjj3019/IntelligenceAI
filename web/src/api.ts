@@ -41,6 +41,22 @@ export function mutation<T>(
 }
 export function message(error: unknown): string {
   if (error instanceof ApiError) {
+    const safeCodes: Record<string, string> = {
+      termination_receipt_required:
+        "Recovery is blocked until a trusted termination receipt confirms the prior runner stopped. Do not clear its lease.",
+      recovery_not_available:
+        "Recovery is unavailable in this state. Refresh status and review the task.",
+      verified_evidence_required:
+        "Approval is blocked until trusted candidate and evidence checks are verified.",
+      approval_binding_changed:
+        "The candidate, policy, evidence, destination or generation changed. Refresh before preparing a new approval intent.",
+      approval_expired_or_ttl_invalid:
+        "This approval intent expired. Check its recorded receipt before explicitly preparing a new intent.",
+      idempotency_conflict:
+        "This request key belongs to a different payload. Reconcile the recorded request before starting a new intent.",
+    };
+    if (error.status === 409 && Object.hasOwn(safeCodes, error.code))
+      return safeCodes[error.code];
     if (error.status === 401)
       return "Your session expired. Sign in again to continue.";
     if (error.status === 403 || error.status === 404)

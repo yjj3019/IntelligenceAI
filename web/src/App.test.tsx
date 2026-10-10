@@ -91,7 +91,10 @@ describe("read-only demo", () => {
   });
 });
 
-function privateFetch(status = 200) {
+function privateFetch(
+  status = 200,
+  taskOverrides: Partial<(typeof demoTasks)[number]> = {},
+) {
   const project = {
     ...demoProject,
     id: "project-fixture",
@@ -108,6 +111,7 @@ function privateFetch(status = 200) {
     candidate_digest: null,
     evidence_digest: null,
     artifacts: [],
+    ...taskOverrides,
   };
   return vi
     .spyOn(globalThis, "fetch")
@@ -142,6 +146,311 @@ function privateFetch(status = 200) {
 }
 
 describe("private boundary and failure flows", () => {
+  it("retries the same approval payload and key after a later language rerender", async () => {
+    history.replaceState({}, "", "/app/approvals");
+    let clock = Date.parse("2026-10-10T10:00:00Z");
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const mock = privateFetch(200, {
+      state: "READY_FOR_APPROVAL",
+      evidence_verified: true,
+      candidate_digest: "a".repeat(64),
+      evidence_digest: "c".repeat(64),
+    });
+    const base = mock.getMockImplementation()!;
+    let count = 0;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/approve")) {
+        if (++count === 1) throw new Error("lost acknowledgement");
+        return new Response("{}");
+      }
+      return base(input, options);
+    });
+    render(<App />);
+    await screen.findByText(
+      "Static evidence is verified. No live model or sandbox claim is implied.",
+    );
+    const prepare = screen.queryByRole("button", {
+      name: "Prepare approval intent",
+    });
+    if (prepare) fireEvent.click(prepare);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Record review approval" }),
+    );
+    await screen.findByRole("alert");
+    clock += 120000;
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
+    fireEvent.click(screen.getByRole("button", { name: "영어로 전환" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Record review approval" }),
+    );
+    await screen.findByRole("status");
+    const requests = mock.mock.calls.filter(([path]) =>
+      String(path).endsWith("/approve"),
+    );
+    expect(requests).toHaveLength(2);
+    expect(requests[1][1]?.body).toBe(requests[0][1]?.body);
+    expect(requests[1][1]?.headers).toEqual(requests[0][1]?.headers);
+  });
+  it("dismisses the fixed cancellation target on task switching, browser back and forward", async () => {
+    history.replaceState(
+      {},
+      "",
+      "/app/task?project=project-fixture&task=task-fixture",
+    );
+    const mock = privateFetch();
+    const base = mock.getMockImplementation()!;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/tasks/task-b")) {
+        const response = await base(
+          "/api/projects/project-fixture/tasks/task-fixture",
+          options,
+        );
+        return new Response(
+          JSON.stringify({
+            ...(await response.json()),
+            id: "task-b",
+            title: "Second private task",
+          }),
+        );
+      }
+      return base(input, options);
+    });
+    render(<App />);
+    await screen.findByRole("heading", {
+      name: "<img src=x onerror=alert(1)>",
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Request cancellation" }),
+    );
+    expect(screen.getByRole("dialog")).toHaveTextContent("task-fixture");
+    history.pushState({}, "", "/app/task?project=project-fixture&task=task-b");
+    fireEvent(window, new PopStateEvent("popstate"));
+    await screen.findByRole("heading", { name: "Second private task" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Request cancellation" }),
+    );
+    expect(screen.getByRole("dialog")).toHaveTextContent("task-b");
+    act(() => history.back());
+    await screen.findByRole("heading", {
+      name: "<img src=x onerror=alert(1)>",
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    act(() => history.forward());
+    await screen.findByRole("heading", { name: "Second private task" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      mock.mock.calls.filter(([path]) => String(path).endsWith("/cancel")),
+    ).toHaveLength(0);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Request cancellation" }),
+    );
+    const confirm = screen.getByRole("button", {
+      name: "Confirm cancellation",
+    });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await screen.findByRole("status");
+    expect(
+      mock.mock.calls.filter(([path]) => String(path).endsWith("/cancel")),
+    ).toHaveLength(1);
+    expect(
+      mock.mock.calls.find(([path]) => String(path).endsWith("/cancel"))?.[0],
+    ).toContain("/tasks/task-b/cancel");
+  });
+  it("rejects a cancellation target changed in history before React handles navigation", async () => {
+    history.replaceState({}, "", "/app/task");
+    const mock = privateFetch();
+    render(<App />);
+    await screen.findByRole("heading", {
+      name: "<img src=x onerror=alert(1)>",
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Request cancellation" }),
+    );
+    history.pushState({}, "", "/app/task?task=other-task");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm cancellation" }),
+    );
+    expect(
+      mock.mock.calls.filter(([path]) => String(path).endsWith("/cancel")),
+    ).toHaveLength(0);
+  });
+  it.each([200, 404])(
+    "ignores delayed private read status %i after logout",
+    async (status) => {
+      history.replaceState({}, "", "/app/task");
+      const mock = privateFetch();
+      const base = mock.getMockImplementation()!;
+      render(<App />);
+      await screen.findByRole("heading", {
+        name: "<img src=x onerror=alert(1)>",
+      });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let pendingReads = 0;
+      mock.mockImplementation(async (input, options) => {
+        if (String(input).startsWith("/api/projects/") && !options?.method) {
+          pendingReads += 1;
+          await gate;
+          if (status !== 200)
+            return new Response(
+              JSON.stringify({ error: "project_not_found" }),
+              { status },
+            );
+        }
+        return base(input, options);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+      await waitFor(() => expect(pendingReads).toBeGreaterThanOrEqual(4));
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "You have signed out",
+      );
+      await act(async () => {
+        release();
+        await gate;
+      });
+      await waitFor(() =>
+        expect(screen.queryByText("Fixture user")).not.toBeInTheDocument(),
+      );
+      expect(
+        screen.queryByText("<img src=x onerror=alert(1)>"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Atlas workspace")).not.toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "You have signed out",
+      );
+    },
+  );
+  it.each([200, 404])(
+    "ignores delayed mutation status %i after logout",
+    async (status) => {
+      history.replaceState({}, "", "/app/task");
+      const mock = privateFetch();
+      const base = mock.getMockImplementation()!;
+      let release!: (response: Response) => void;
+      const pendingResponse = new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+      mock.mockImplementation(async (input, options) =>
+        String(input).endsWith("/cancel")
+          ? pendingResponse
+          : base(input, options),
+      );
+      render(<App />);
+      await screen.findByRole("heading", {
+        name: "<img src=x onerror=alert(1)>",
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Request cancellation" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Confirm cancellation" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "You have signed out",
+      );
+      await act(async () => {
+        release(
+          new Response(
+            JSON.stringify(
+              status === 200
+                ? { state: "CANCEL_REQUESTED" }
+                : { error: "project_not_found" },
+            ),
+            { status },
+          ),
+        );
+        await pendingResponse;
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "You have signed out",
+      );
+      expect(
+        screen.queryByText("<img src=x onerror=alert(1)>"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    },
+  );
+  it("freezes approval payload/key through lost response, rerenders, refresh and expiry; new intent is explicit", async () => {
+    history.replaceState({}, "", "/app/approvals");
+    let clock = Date.parse("2026-10-10T10:00:00Z");
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const mock = privateFetch(200, {
+      state: "READY_FOR_APPROVAL",
+      evidence_verified: true,
+      candidate_digest: "a".repeat(64),
+      evidence_digest: "c".repeat(64),
+    });
+    const base = mock.getMockImplementation()!;
+    let approvals = 0;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/approve")) {
+        approvals += 1;
+        if (approvals === 1) throw new Error("lost acknowledgement");
+        return new Response(JSON.stringify({ review_grant_recorded: true }));
+      }
+      return base(input, options);
+    });
+    render(<App />);
+    await screen.findByText(
+      "Static evidence is verified. No live model or sandbox claim is implied.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Record review approval" }),
+    ).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Prepare approval intent" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Record review approval" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Connection interrupted",
+    );
+    clock += 120000;
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
+    expect(
+      screen.getByRole("button", { name: "새 승인 요청 준비" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "영어로 전환" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText(
+      "Static evidence is verified. No live model or sandbox claim is implied.",
+    );
+    clock += 600000;
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
+    expect(
+      screen.getByRole("button", { name: "검토 승인 기록" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "영어로 전환" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Check recorded approval receipt" }),
+    );
+    await screen.findByRole("status");
+    const requests = () =>
+      mock.mock.calls.filter(([path]) => String(path).endsWith("/approve"));
+    expect(requests()).toHaveLength(2);
+    expect(requests()[1][1]?.body).toBe(requests()[0][1]?.body);
+    expect(requests()[1][1]?.headers).toEqual(requests()[0][1]?.headers);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Prepare new approval intent" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Record review approval" }),
+    );
+    await waitFor(() => expect(approvals).toBe(3));
+    expect(requests()[2][1]?.body).not.toBe(requests()[1][1]?.body);
+    expect(
+      (requests()[2][1]?.headers as Record<string, string>)["Idempotency-Key"],
+    ).not.toBe(
+      (requests()[1][1]?.headers as Record<string, string>)["Idempotency-Key"],
+    );
+  });
   it("keeps a mutation key after lost acknowledgement and releases it for the next confirmed intent", async () => {
     history.replaceState({}, "", "/app/task");
     const mock = privateFetch();

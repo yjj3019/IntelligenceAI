@@ -412,19 +412,76 @@ function WorkspaceApp() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [artifact, setArtifact] = useState("");
   const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState(false);
+  const [confirm, setConfirm] = useState<{
+    projectId: string;
+    taskId: string;
+    title: string;
+    userId: string;
+    routeKey: string;
+    epoch: number;
+  } | null>(null);
+  const [approvalIntent, setApprovalIntent] = useState<{
+    projectId: string;
+    taskId: string;
+    userId: string;
+    binding: Binding;
+    key: string;
+    status: "prepared" | "uncertain" | "recorded";
+  } | null>(null);
+  const [approvalNow, setApprovalNow] = useState(() =>
+    Math.floor(Date.now() / 1000),
+  );
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const navigationPanel = useRef<HTMLElement>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const pending = useRef(false);
   const requestKeys = useRef(new Map<string, string>());
+  const requestEpoch = useRef(0);
+  const identityId = useRef<string | null>(null);
+  const signingOut = useRef(false);
   const active = current.mode === "private";
   const isShell =
     /^\/(demo|app)(\/|$)/.test(current.path) && !(publicOnly && active);
   const selectedProject = current.project || projects[0]?.id || "";
   const canWrite = project?.role === "owner" || project?.role === "operator";
   const canApprove = project?.role === "owner" || project?.role === "approver";
+
+  function routeIdentity(value = route()) {
+    return (
+      value.mode + "|" + value.path + "|" + value.project + "|" + value.task
+    );
+  }
+  function clearPrivate(preserveRetry = false) {
+    requestEpoch.current += 1;
+    if (!preserveRetry) identityId.current = null;
+    pending.current = false;
+    if (!preserveRetry) requestKeys.current.clear();
+    setBusy(false);
+    setLoading(false);
+    setSession(null);
+    setProjects([]);
+    setProject(null);
+    setTasks([]);
+    setTask(null);
+    setAudit([]);
+    setConnections(null);
+    setArtifact("");
+    setFeedback("");
+    setConfirm(null);
+    if (!preserveRetry) setApprovalIntent(null);
+    setPlan(null);
+    setForm({ title: "", request: "", profile: "python-review" });
+  }
+  useEffect(() => {
+    if (!approvalIntent) return;
+    setApprovalNow(Math.floor(Date.now() / 1000));
+    const timer = setTimeout(
+      () => setApprovalNow(Math.floor(Date.now() / 1000)),
+      Math.max(1, approvalIntent.binding.expires_at * 1000 - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [approvalIntent?.binding.expires_at]);
 
   useEffect(() => {
     if (menuOpen)
@@ -436,6 +493,7 @@ function WorkspaceApp() {
     taskId = current.task,
     projectId = selectedProject,
   ) {
+    setConfirm(null);
     const query = new URLSearchParams();
     if (projectId) query.set("project", projectId);
     if (taskId) query.set("task", taskId);
@@ -451,6 +509,7 @@ function WorkspaceApp() {
   }
   useEffect(() => {
     const pop = () => {
+      setConfirm(null);
       setCurrent(route());
       setError("");
       setFeedback("");
@@ -471,8 +530,12 @@ function WorkspaceApp() {
   }, [confirm]);
 
   useEffect(() => {
-    if (!isShell) return;
+    if (!isShell || signingOut.current) return;
     let alive = true;
+    const epoch = ++requestEpoch.current;
+    setConfirm(null);
+    pending.current = false;
+    setBusy(false);
     setLoading(true);
     setError("");
     setArtifact("");
@@ -482,6 +545,7 @@ function WorkspaceApp() {
     setAudit([]);
     setConnections(null);
     if (!active) {
+      if (identityId.current) clearPrivate();
       setSession(null);
       setProjects([demoProject]);
       setProject(demoProject);
@@ -497,8 +561,17 @@ function WorkspaceApp() {
     void (async () => {
       try {
         const identity = await api<Session>("/session");
+        if (!alive || epoch !== requestEpoch.current) return;
         const list = await api<Project[]>("/projects");
-        if (!alive) return;
+        if (!alive || epoch !== requestEpoch.current) return;
+        if (identityId.current && identityId.current !== identity.user.id) {
+          requestKeys.current.clear();
+          setApprovalIntent(null);
+          setConfirm(null);
+          setPlan(null);
+          setForm({ title: "", request: "", profile: "python-review" });
+        }
+        identityId.current = identity.user.id;
         setSession(identity);
         setProjects(list);
         setAuthNeeded(false);
@@ -518,20 +591,21 @@ function WorkspaceApp() {
         const taskDetail = selected
           ? await api<Task>(base + "/tasks/" + encodeURIComponent(selected))
           : null;
-        if (!alive) return;
+        if (!alive || epoch !== requestEpoch.current) return;
         setProject(detail);
         setTasks(taskList);
         setAudit(events);
         setConnections(config);
         setTask(taskDetail);
       } catch (err) {
-        if (!alive) return;
+        if (!alive || epoch !== requestEpoch.current) return;
+        clearPrivate(
+          !(err instanceof ApiError && [401, 403, 404].includes(err.status)),
+        );
         setError(message(err));
-        setSession(null);
-        setProjects([]);
         setAuthNeeded(err instanceof ApiError && err.status === 401);
       } finally {
-        if (alive) setLoading(false);
+        if (alive && epoch === requestEpoch.current) setLoading(false);
       }
     })();
     return () => {
@@ -542,6 +616,7 @@ function WorkspaceApp() {
   useEffect(() => {
     if (!active || !task || !session || error) return;
     let alive = true;
+    const epoch = requestEpoch.current;
     let stream: EventSource | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const path =
@@ -551,7 +626,7 @@ function WorkspaceApp() {
       encodeURIComponent(task.id) +
       "/events";
     const snapshot = (event: MessageEvent) => {
-      if (!alive) return;
+      if (!alive || epoch !== requestEpoch.current) return;
       try {
         setTask(JSON.parse(event.data) as Task);
       } catch {
@@ -560,26 +635,26 @@ function WorkspaceApp() {
       }
     };
     const connect = () => {
-      if (!alive) return;
+      if (!alive || epoch !== requestEpoch.current) return;
       stream = new EventSource(path);
       stream.addEventListener("snapshot", snapshot);
       // Each finite snapshot reauthorizes. Confirm access before scheduling another stream.
       stream.onerror = () => {
+        if (!alive || epoch !== requestEpoch.current) return;
         stream?.close();
         void api<Task>(path.slice(4, -7))
           .then((updated) => {
-            if (!alive) return;
+            if (!alive || epoch !== requestEpoch.current) return;
             setTask(updated);
             timer = setTimeout(connect, 5000);
           })
           .catch((err) => {
-            if (!alive) return;
-            setArtifact("");
-            setTask(null);
-            setTasks([]);
-            setProject(null);
-            setAudit([]);
-            setConnections(null);
+            if (!alive || epoch !== requestEpoch.current) return;
+            clearPrivate(
+              !(
+                err instanceof ApiError && [401, 403, 404].includes(err.status)
+              ),
+            );
             setError(message(err));
             setAuthNeeded(err instanceof ApiError && err.status === 401);
           });
@@ -601,6 +676,7 @@ function WorkspaceApp() {
       return;
     }
     let alive = true;
+    const epoch = requestEpoch.current;
     const artifactId = task.artifacts[0].id;
     void fetch(
       "/api/projects/" +
@@ -615,18 +691,14 @@ function WorkspaceApp() {
         if (!response.ok)
           throw new ApiError(response.status, "artifact_unavailable");
         const text = await response.text();
-        if (alive) setArtifact(text);
+        if (alive && epoch === requestEpoch.current) setArtifact(text);
       })
       .catch((err) => {
-        if (alive) {
+        if (alive && epoch === requestEpoch.current) {
           setError(message(err));
           setArtifact("");
           if (err instanceof ApiError && [401, 403, 404].includes(err.status)) {
-            setTask(null);
-            setTasks([]);
-            setProject(null);
-            setAudit([]);
-            setConnections(null);
+            clearPrivate();
             setAuthNeeded(err.status === 401);
           }
         }
@@ -652,8 +724,17 @@ function WorkspaceApp() {
     operation: string,
     payload: unknown = {},
     method = "POST",
+    explicitKey?: string,
   ) {
-    if (!active || !session || !project || pending.current) return;
+    if (
+      !active ||
+      !session ||
+      !project ||
+      pending.current ||
+      signingOut.current
+    )
+      return;
+    const epoch = requestEpoch.current;
     pending.current = true;
     setBusy(true);
     setError("");
@@ -662,10 +743,17 @@ function WorkspaceApp() {
       const result = await mutation<{ id?: string; state?: string }>(
         `/projects/${encodeURIComponent(project.id)}/${operation}`,
         session.csrf,
-        keyFor(operation, payload),
+        explicitKey || keyFor(operation, payload),
         payload,
         method,
       );
+      if (epoch !== requestEpoch.current) return;
+      if (explicitKey)
+        setApprovalIntent((intent) =>
+          intent?.key === explicitKey
+            ? { ...intent, status: "recorded" }
+            : intent,
+        );
       // Preserve uncertain retries, then release the key after a confirmed response.
       requestKeys.current.delete(
         session.user.id +
@@ -687,23 +775,22 @@ function WorkspaceApp() {
       }
       setRevision((v) => v + 1);
     } catch (err) {
+      if (epoch !== requestEpoch.current) return;
       setError(message(err));
       if (err instanceof ApiError && [401, 403, 404].includes(err.status)) {
-        setTask(null);
-        setTasks([]);
-        setArtifact("");
-        setProject(null);
-        setAudit([]);
-        setConnections(null);
+        clearPrivate();
         setAuthNeeded(err.status === 401);
       }
     } finally {
-      pending.current = false;
-      setBusy(false);
+      if (epoch === requestEpoch.current) {
+        pending.current = false;
+        setBusy(false);
+      }
     }
   }
   async function previewForm() {
-    if (pending.current) return;
+    if (pending.current || signingOut.current) return;
+    const epoch = requestEpoch.current;
     setPlan(null);
     setError("");
     setFeedback("");
@@ -715,37 +802,45 @@ function WorkspaceApp() {
     pending.current = true;
     setBusy(true);
     try {
-      setPlan(
-        await mutation<Plan>(
-          `/projects/${encodeURIComponent(project.id)}/preview`,
-          session.csrf,
-          crypto.randomUUID(),
-          form,
-        ),
+      const preview = await mutation<Plan>(
+        `/projects/${encodeURIComponent(project.id)}/preview`,
+        session.csrf,
+        crypto.randomUUID(),
+        form,
       );
+      if (epoch === requestEpoch.current) setPlan(preview);
     } catch (err) {
+      if (epoch !== requestEpoch.current) return;
+      if (err instanceof ApiError && [401, 403, 404].includes(err.status))
+        clearPrivate();
       setError(message(err));
     } finally {
-      pending.current = false;
-      setBusy(false);
+      if (epoch === requestEpoch.current) {
+        pending.current = false;
+        setBusy(false);
+      }
     }
   }
   async function signOut() {
-    if (!session) return;
+    if (!session || signingOut.current) return;
+    const csrf = session.csrf;
+    signingOut.current = true;
+    clearPrivate();
+    const epoch = requestEpoch.current;
+    setAuthNeeded(false);
+    setFeedback("Signing out. Private requests are invalidated.");
     try {
-      await mutation("/logout", session.csrf, crypto.randomUUID(), {});
-      setSession(null);
-      setTask(null);
-      setTasks([]);
-      setArtifact("");
-      setProject(null);
-      setAudit([]);
-      setConnections(null);
-      setProjects([]);
+      await mutation("/logout", csrf, crypto.randomUUID(), {});
+      if (epoch !== requestEpoch.current) return;
       setAuthNeeded(true);
       setError("You have signed out.");
     } catch (err) {
+      if (epoch !== requestEpoch.current) return;
+      setAuthNeeded(true);
       setError(message(err));
+    } finally {
+      signingOut.current = false;
+      if (epoch === requestEpoch.current) setFeedback("");
     }
   }
   const visibleTasks = tasks.filter(
@@ -759,7 +854,7 @@ function WorkspaceApp() {
   );
   const title = t(navigation.find((n) => n.id === current.page)!.label);
   const taskPath = task ? "tasks/" + encodeURIComponent(task.id) + "/" : "";
-  const binding: Binding | null =
+  const binding: Omit<Binding, "expires_at"> | null =
     task?.candidate_digest && task.evidence_digest && project
       ? {
           candidate_digest: task.candidate_digest,
@@ -767,9 +862,66 @@ function WorkspaceApp() {
           evidence_digest: task.evidence_digest,
           destination_id: task.destination_id,
           generation: task.generation,
-          expires_at: Math.floor(Date.now() / 1000) + 600,
         }
       : null;
+  const intentTargetMatches =
+    !!approvalIntent &&
+    approvalIntent.projectId === project?.id &&
+    approvalIntent.taskId === task?.id &&
+    approvalIntent.userId === session?.user.id;
+  const intentBindingMatches =
+    intentTargetMatches &&
+    !!binding &&
+    Object.entries(binding).every(
+      ([key, value]) => approvalIntent?.binding[key as keyof Binding] === value,
+    );
+  const intentExpired =
+    !!approvalIntent &&
+    Math.max(approvalNow, Math.floor(Date.now() / 1000)) >=
+      approvalIntent.binding.expires_at;
+  const reviewReady =
+    active &&
+    canApprove &&
+    !!task?.evidence_verified &&
+    task.state === "READY_FOR_APPROVAL" &&
+    !!binding;
+  function prepareApproval() {
+    if (!reviewReady || !binding || !session || !project || !task || busy)
+      return;
+    setApprovalIntent({
+      projectId: project.id,
+      taskId: task.id,
+      userId: session.user.id,
+      binding: { ...binding, expires_at: Math.floor(Date.now() / 1000) + 600 },
+      key: crypto.randomUUID(),
+      status: "prepared",
+    });
+    setError("");
+    setFeedback("");
+  }
+  function submitApproval(checkReceipt = false) {
+    if (
+      !approvalIntent ||
+      !intentTargetMatches ||
+      !active ||
+      !canApprove ||
+      busy ||
+      pending.current
+    )
+      return;
+    if (
+      !checkReceipt &&
+      (!reviewReady || !intentBindingMatches || intentExpired)
+    )
+      return;
+    setApprovalIntent({ ...approvalIntent, status: "uncertain" });
+    void perform(
+      "tasks/" + encodeURIComponent(approvalIntent.taskId) + "/approve",
+      approvalIntent.binding,
+      "POST",
+      approvalIntent.key,
+    );
+  }
 
   if (publicOnly && active) return <DeploymentPending />;
   if (!isShell) return <Landing docs={current.path === "/docs"} />;
@@ -1468,7 +1620,17 @@ function WorkspaceApp() {
                             busy ||
                             task.state === "CANCELLED"
                           }
-                          onClick={() => setConfirm(true)}
+                          onClick={() => {
+                            if (project && session)
+                              setConfirm({
+                                projectId: project.id,
+                                taskId: task.id,
+                                title: task.title,
+                                userId: session.user.id,
+                                routeKey: routeIdentity(),
+                                epoch: requestEpoch.current,
+                              });
+                          }}
                         >
                           {t("Request cancellation")}
                         </button>
@@ -1673,7 +1835,42 @@ function WorkspaceApp() {
                           {t(". Dispatch remains disabled.")}
                         </p>
                       )}
+                      {approvalIntent && intentTargetMatches && (
+                        <div className="notice">
+                          <span>
+                            {t("Approval intent expiry:")}{" "}
+                            {formatDate(approvalIntent.binding.expires_at)}
+                            <br />
+                            {t(
+                              intentExpired
+                                ? "This intent expired. Check its receipt before preparing a new intent."
+                                : approvalIntent.status === "uncertain"
+                                  ? "The response was not confirmed. Retry this exact intent or check its recorded receipt."
+                                  : approvalIntent.status === "recorded"
+                                    ? "This request receipt was recorded. Review the current task grant and expiry."
+                                    : "Candidate, destination, expiry and request key are fixed for this intent.",
+                            )}
+                          </span>
+                        </div>
+                      )}
                       <div className="button-row">
+                        <button
+                          className="button secondary"
+                          disabled={
+                            !reviewReady ||
+                            busy ||
+                            (intentBindingMatches &&
+                              !intentExpired &&
+                              approvalIntent?.status !== "recorded")
+                          }
+                          onClick={prepareApproval}
+                        >
+                          {t(
+                            approvalIntent
+                              ? "Prepare new approval intent"
+                              : "Prepare approval intent",
+                          )}
+                        </button>
                         <button
                           className="button primary"
                           disabled={
@@ -1681,15 +1878,24 @@ function WorkspaceApp() {
                             !canApprove ||
                             !task.evidence_verified ||
                             task.state !== "READY_FOR_APPROVAL" ||
-                            !binding ||
+                            !intentBindingMatches ||
+                            intentExpired ||
+                            approvalIntent?.status === "recorded" ||
                             busy
                           }
-                          onClick={() =>
-                            void perform(taskPath + "approve", binding)
-                          }
+                          onClick={() => submitApproval()}
                         >
                           {t("Record review approval")}
                         </button>
+                        {intentTargetMatches && approvalIntent && (
+                          <button
+                            className="button secondary"
+                            disabled={!active || !canApprove || busy}
+                            onClick={() => submitApproval(true)}
+                          >
+                            {t("Check recorded approval receipt")}
+                          </button>
+                        )}
                         <button
                           className="button secondary"
                           disabled={!active || !canApprove || busy}
@@ -1859,11 +2065,19 @@ function WorkspaceApp() {
       </div>
       <dialog
         ref={dialog}
-        onCancel={() => setConfirm(false)}
-        onClose={() => setConfirm(false)}
+        aria-labelledby="cancel-title"
+        onCancel={() => setConfirm(null)}
+        onClose={() => setConfirm(null)}
       >
         <div className="dialog-content">
-          <h2>{t("Request task cancellation?")}</h2>
+          <h2 id="cancel-title">{t("Request task cancellation?")}</h2>
+          {confirm && (
+            <p>
+              <strong>{confirm.title}</strong>
+              <br />
+              <code>{confirm.taskId}</code>
+            </p>
+          )}
           <p>
             {t(
               "The server confirms cancellation only if the queue item has never started. Otherwise the state stays “Cancellation requested” until termination is verified.",
@@ -1873,15 +2087,28 @@ function WorkspaceApp() {
             <button
               className="button secondary"
               autoFocus
-              onClick={() => setConfirm(false)}
+              onClick={() => setConfirm(null)}
             >
               {t("Keep task")}
             </button>
             <button
               className="button danger"
+              disabled={!confirm || busy}
               onClick={() => {
-                setConfirm(false);
-                void perform(taskPath + "cancel");
+                const target = confirm;
+                setConfirm(null);
+                if (
+                  !target ||
+                  target.epoch !== requestEpoch.current ||
+                  target.routeKey !== routeIdentity() ||
+                  target.taskId !== task?.id ||
+                  target.projectId !== project?.id ||
+                  target.userId !== session?.user.id
+                )
+                  return;
+                void perform(
+                  "tasks/" + encodeURIComponent(target.taskId) + "/cancel",
+                );
               }}
             >
               {t("Confirm cancellation")}

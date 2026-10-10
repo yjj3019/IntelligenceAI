@@ -2,6 +2,32 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  "Signing out. Private requests are invalidated.":
+    "로그아웃 중입니다. 기존 private 요청은 무효화됩니다.",
+  "Approval intent expiry:": "승인 요청 만료:",
+  "This intent expired. Check its receipt before preparing a new intent.":
+    "이 승인 요청은 만료되었습니다. 새 요청을 준비하기 전에 접수 기록을 확인하세요.",
+  "The response was not confirmed. Retry this exact intent or check its recorded receipt.":
+    "응답을 확인하지 못했습니다. 동일한 승인 요청으로 다시 시도하거나 접수 기록을 확인하세요.",
+  "This request receipt was recorded. Review the current task grant and expiry.":
+    "이 요청의 접수 기록이 저장되었습니다. 현재 작업의 승인 조건과 만료를 확인하세요.",
+  "Candidate, destination, expiry and request key are fixed for this intent.":
+    "이 요청의 후보, 대상, 만료와 요청 키가 고정되었습니다.",
+  "Prepare new approval intent": "새 승인 요청 준비",
+  "Prepare approval intent": "승인 요청 준비",
+  "Check recorded approval receipt": "승인 접수 기록 확인",
+  "Recovery is blocked until a trusted termination receipt confirms the prior runner stopped. Do not clear its lease.":
+    "이전 실행기의 종료를 신뢰할 수 있는 영수증으로 확인할 때까지 복구가 차단됩니다. lease를 지우지 마세요.",
+  "Recovery is unavailable in this state. Refresh status and review the task.":
+    "현재 상태에서는 복구할 수 없습니다. 상태를 새로고침하고 작업을 확인하세요.",
+  "Approval is blocked until trusted candidate and evidence checks are verified.":
+    "신뢰할 수 있는 후보와 증거 검사가 검증될 때까지 승인이 차단됩니다.",
+  "The candidate, policy, evidence, destination or generation changed. Refresh before preparing a new approval intent.":
+    "후보, 정책, 증거, 대상 또는 세대가 변경되었습니다. 새 승인 요청을 준비하기 전에 새로고침하세요.",
+  "This approval intent expired. Check its recorded receipt before explicitly preparing a new intent.":
+    "이 승인 요청이 만료되었습니다. 접수 기록을 확인한 뒤 새 요청을 직접 준비하세요.",
+  "This request key belongs to a different payload. Reconcile the recorded request before starting a new intent.":
+    "이 요청 키는 다른 payload에 연결되어 있습니다. 새 요청 전에 기존 접수 기록을 확인하세요.",
   "Signed-out visitor": "로그인 전 방문자",
   "No model or sandbox has executed. This ledger records held work only.":
     "모델이나 샌드박스는 실행되지 않았습니다. 이 원장은 보류된 작업만 기록합니다.",

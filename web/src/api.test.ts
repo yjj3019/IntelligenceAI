@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { api, ApiError, message, mutation } from "./api";
+import { translate } from "./i18n";
 afterEach(() => vi.restoreAllMocks());
 it("reuses request keys and only sends session-bound CSRF authority", async () => {
   const spy = vi
@@ -15,6 +16,24 @@ it("reuses request keys and only sends session-bound CSRF authority", async () =
     });
     expect(options?.body).not.toContain("principal");
   }
+});
+it("maps safe recovery/approval conflict codes to distinct KO/EN guidance", () => {
+  const codes = [
+    "termination_receipt_required",
+    "recovery_not_available",
+    "verified_evidence_required",
+    "approval_binding_changed",
+    "approval_expired_or_ttl_invalid",
+    "idempotency_conflict",
+  ];
+  const messages = codes.map((code) => message(new ApiError(409, code)));
+  expect(new Set(messages).size).toBe(codes.length);
+  for (const text of messages)
+    expect(translate("ko", text)).not.toBe(translate("en", text));
+  expect(messages[0]).toContain("termination receipt");
+  expect(message(new ApiError(409, "raw_secret_exception"))).not.toContain(
+    "raw_secret_exception",
+  );
 });
 it("does not echo server exceptions or credential payloads", async () => {
   vi.spyOn(globalThis, "fetch").mockResolvedValue(
