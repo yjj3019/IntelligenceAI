@@ -2,6 +2,28 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  "The execution session is no longer valid. Sign in again and review current authority.":
+    "실행 세션이 유효하지 않습니다. 다시 로그인하고 현재 권한을 확인하세요.",
+  "A current bound review approval is required before synthetic execution.":
+    "합성 실행에는 현재 후보에 결합된 검토 승인이 필요합니다.",
+  "Synthetic execution requires a verified receipt from the fixed core fixture.":
+    "합성 실행에는 고정 core fixture의 검증된 결과 기록이 필요합니다.",
+  "This generation already has a synthetic invocation. Refresh its receipt before recovery.":
+    "이 generation에는 이미 합성 실행이 예약되어 있습니다. 복구 전에 결과 기록을 새로고침하세요.",
+  "Synthetic execution is unavailable in this state. Refresh the task and its approval.":
+    "현재 상태에서는 합성 실행을 요청할 수 없습니다. 작업과 승인을 새로고침하세요.",
+  "Run approved synthetic vendor": "승인된 합성 vendor 실행",
+  "Approved synthetic vendor runs": "승인된 합성 vendor 실행 기록",
+  "Approved synthetic vendor queued. No paid model is authorized.":
+    "승인된 합성 vendor를 대기열에 등록했습니다. 유료 모델 실행 권한은 부여하지 않습니다.",
+  "These results come from a fixed fake executable. Live models and OS isolation remain unverified.":
+    "고정 fake 실행 파일의 결과입니다. 실제 모델과 OS 격리는 미검증 상태입니다.",
+  "Synthetic process termination confirmed. Live model NOTRUN.":
+    "합성 프로세스 종료를 확인했습니다. 실제 모델은 NOTRUN입니다.",
+  "Fixed synthetic vendor response": "고정 합성 vendor 응답",
+  "vendor queued": "합성 vendor 대기 중",
+  "vendor running": "합성 vendor 실행 중",
+  "fixture completed": "합성 vendor 완료",
   Provider: "Provider",
   Mode: "실행 모드",
   Status: "상태",

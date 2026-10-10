@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { demoAudit, demoConnections, demoProject, demoTasks } from "./demo";
+import type { Task } from "./types";
 
 beforeEach(() => {
   localStorage.setItem("iai.language", "en");
@@ -146,6 +147,159 @@ function privateFetch(
 }
 
 describe("private boundary and failure flows", () => {
+  function approvedVendor(
+    taskOverrides: Partial<Task> = {},
+    authorized = true,
+  ) {
+    history.replaceState({}, "", "/app/task");
+    const mock = privateFetch(200, {
+      state: "READY_FOR_APPROVAL",
+      generation: 2,
+      approval: {
+        candidate_digest: "a".repeat(64),
+        evidence_digest: "b".repeat(64),
+        policy_digest: "c".repeat(64),
+        destination_id: "private-review",
+        generation: 2,
+        expires_at: Math.floor(Date.now() / 1000) + 300,
+      },
+      ...taskOverrides,
+    });
+    const base = mock.getMockImplementation()!;
+    mock.mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/connections"))
+        return new Response(
+          JSON.stringify({
+            ...demoConnections,
+            fixture_execution: authorized ? "AUTHORIZED" : "BLOCKED",
+          }),
+        );
+      if (String(input).endsWith("/run-approved-fixture"))
+        return new Response(
+          JSON.stringify({ id: "task-fixture", state: "VENDOR_QUEUED" }),
+        );
+      return base(input, options);
+    });
+    return mock;
+  }
+  it("queues a synthetic vendor only on explicit action, with old generations preserved", async () => {
+    const mock = approvedVendor({
+      vendor_runs: [
+        { id: "old-run", generation: 1, state: "TERMINATED", result: null },
+      ],
+    });
+    render(<App />);
+    const button = await screen.findByRole("button", {
+      name: "Run approved synthetic vendor",
+    });
+    await waitFor(() => expect(button).toBeEnabled());
+    const posts = () =>
+      mock.mock.calls.filter(([, opts]) => opts?.method === "POST");
+    expect(posts()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    const refreshed = await screen.findByRole("button", {
+      name: "Run approved synthetic vendor",
+    });
+    await waitFor(() => expect(refreshed).toBeEnabled());
+    expect(posts()).toHaveLength(0);
+    fireEvent.click(refreshed);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(String(posts()[0][0])).toMatch(/\/run-approved-fixture$/);
+    expect(posts()[0][1]?.body).toBe("{}");
+    expect(
+      await screen.findByText(
+        "Approved synthetic vendor queued. No paid model is authorized.",
+      ),
+    ).toBeVisible();
+  });
+  it.each(["missing", "expired", "duplicate", "no-capability"])(
+    "blocks synthetic execution with %s authority",
+    async (reason) => {
+      const mock = approvedVendor(
+        reason === "missing"
+          ? { approval: null }
+          : reason === "expired"
+            ? {
+                approval: {
+                  candidate_digest: "a".repeat(64),
+                  evidence_digest: "b".repeat(64),
+                  policy_digest: "c".repeat(64),
+                  generation: 2,
+                  destination_id: "private-review",
+                  expires_at: 1,
+                },
+              }
+            : reason === "duplicate"
+              ? {
+                  vendor_runs: [
+                    {
+                      id: "current",
+                      generation: 2,
+                      state: "RESERVED",
+                      result: null,
+                    },
+                  ],
+                }
+              : {},
+        reason !== "no-capability",
+      );
+      render(<App />);
+      expect(
+        await screen.findByRole("button", {
+          name: "Run approved synthetic vendor",
+        }),
+      ).toBeDisabled();
+      expect(
+        mock.mock.calls.filter(([, opts]) => opts?.method === "POST"),
+      ).toHaveLength(0);
+    },
+  );
+  it("labels synthetic output and process termination without claiming a live model", async () => {
+    approvedVendor({
+      state: "FIXTURE_COMPLETED",
+      vendor_runs: [
+        {
+          id: "synthetic-run",
+          generation: 2,
+          state: "COMPLETED",
+          result: {
+            kind: "completed",
+            scope: "FAKE_VENDOR_TEST_ONLY",
+            live_model: "NOTRUN",
+            termination_confirmed: true,
+            output: {
+              message: "Synthetic fixture completed",
+              value: 42,
+              status: "SYNTHETIC_OUTPUT",
+            },
+          },
+        },
+      ],
+    });
+    render(<App />);
+    expect(
+      await screen.findByRole("heading", {
+        name: "Approved synthetic vendor runs",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "Synthetic process termination confirmed. Live model NOTRUN.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText(/fixed fake executable/)).toBeVisible();
+    expect(screen.getByText("Synthetic fixture completed: 42")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Run approved synthetic vendor" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Korean" }));
+    expect(screen.getByText("합성 vendor 완료")).toBeVisible();
+    expect(
+      screen.getByText(
+        "합성 프로세스 종료를 확인했습니다. 실제 모델은 NOTRUN입니다.",
+      ),
+    ).toBeVisible();
+  });
   it("shows server provider blockers in both languages without enabling execution", async () => {
     history.replaceState({}, "", "/app/connections");
     const mock = privateFetch();
@@ -815,6 +969,172 @@ describe("private boundary and failure flows", () => {
     expect(key(0)).toBe(key(1));
     expect(key(2)).not.toBe(key(1));
   });
+  it.each(["cancel", "run-approved-fixture"])(
+    "creates a new %s intent after a lost acknowledgement, SSE and recovery",
+    async (operation) => {
+      const mock = approvedVendor();
+      const base = mock.getMockImplementation()!;
+      let currentTask: Task = {
+        ...demoTasks[0],
+        id: "task-fixture",
+        project_id: "project-fixture",
+        source: "test-fixture",
+        generation: 1,
+        title: "Generation-bound fixture",
+        approval: {
+          candidate_digest: "a".repeat(64),
+          evidence_digest: "b".repeat(64),
+          policy_digest: "c".repeat(64),
+          generation: 1,
+          destination_id: "private-review",
+          expires_at: Math.floor(Date.now() / 1000) + 300,
+        },
+        vendor_runs: [],
+      };
+      let calls = 0;
+      const streams: Stream[] = [];
+      class Stream {
+        onerror = null;
+        close = vi.fn();
+        snapshot?: (event: MessageEvent) => void;
+        constructor() {
+          streams.push(this);
+        }
+        addEventListener(
+          _name: string,
+          handler: (event: MessageEvent) => void,
+        ) {
+          this.snapshot = handler;
+        }
+      }
+      const original = globalThis.EventSource;
+      vi.stubGlobal("EventSource", Stream);
+      mock.mockImplementation(async (input, options) => {
+        const path = String(input);
+        if (path.endsWith("/tasks/task-fixture"))
+          return new Response(JSON.stringify(currentTask));
+        if (path.endsWith("/" + operation)) {
+          calls += 1;
+          currentTask = {
+            ...currentTask,
+            state: operation === "cancel" ? "CANCELLED" : "VENDOR_QUEUED",
+          };
+          if (calls === 1) throw new Error("lost acknowledgement after commit");
+          return new Response(
+            JSON.stringify({ id: currentTask.id, state: currentTask.state }),
+          );
+        }
+        if (path.endsWith("/cancel")) {
+          currentTask = { ...currentTask, state: "CANCELLED" };
+          return new Response(
+            JSON.stringify({ id: currentTask.id, state: "CANCELLED" }),
+          );
+        }
+        if (path.endsWith("/recover")) {
+          currentTask = {
+            ...currentTask,
+            generation: 2,
+            state: "READY_FOR_APPROVAL",
+            approval: { ...currentTask.approval!, generation: 2 },
+          };
+          return new Response(
+            JSON.stringify({
+              id: currentTask.id,
+              generation: 2,
+              state: "BLOCKED",
+            }),
+          );
+        }
+        return base(input, options);
+      });
+      const view = render(<App />);
+      const cancel = () => {
+        fireEvent.click(
+          screen.getByRole("button", { name: "Request cancellation" }),
+        );
+        fireEvent.click(
+          screen.getByRole("button", { name: "Confirm cancellation" }),
+        );
+      };
+      try {
+        await screen.findByRole("heading", { name: currentTask.title });
+        await waitFor(() =>
+          expect(
+            screen.getByRole("button", {
+              name: "Run approved synthetic vendor",
+            }),
+          ).toBeEnabled(),
+        );
+        if (operation === "cancel") cancel();
+        else
+          fireEvent.click(
+            screen.getByRole("button", {
+              name: "Run approved synthetic vendor",
+            }),
+          );
+        expect(await screen.findByRole("alert")).toHaveTextContent(
+          "Connection interrupted",
+        );
+        const streamCount = streams.length;
+        fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+        await waitFor(() =>
+          expect(streams.length).toBeGreaterThan(streamCount),
+        );
+        await act(async () =>
+          streams.at(-1)?.snapshot?.(
+            new MessageEvent("snapshot", {
+              data: JSON.stringify(currentTask),
+            }),
+          ),
+        );
+        if (operation !== "cancel") {
+          cancel();
+          await waitFor(() =>
+            expect(
+              screen.getByRole("button", { name: "Request cancellation" }),
+            ).toBeDisabled(),
+          );
+        }
+        fireEvent.click(
+          screen.getByRole("link", { name: /^Approval & recovery/ }),
+        );
+        const recover = await screen.findByRole("button", {
+          name: "Prepare recovery",
+        });
+        await waitFor(() => expect(recover).toBeEnabled());
+        fireEvent.click(recover);
+        await waitFor(() => expect(currentTask.generation).toBe(2));
+        fireEvent.click(screen.getByRole("link", { name: /^Task & steps$/ }));
+        const next = await screen.findByRole("button", {
+          name:
+            operation === "cancel"
+              ? "Request cancellation"
+              : "Run approved synthetic vendor",
+        });
+        await waitFor(() => expect(next).toBeEnabled());
+        if (operation === "cancel") cancel();
+        else fireEvent.click(next);
+        await waitFor(() => expect(calls).toBe(2));
+        const requests = mock.mock.calls.filter(
+          ([path, options]) =>
+            String(path).endsWith("/" + operation) &&
+            options?.method === "POST",
+        );
+        const keys = requests.map(
+          ([, options]) =>
+            (options?.headers as Record<string, string>)["Idempotency-Key"],
+        );
+        expect(keys).toHaveLength(2);
+        expect(keys[1]).not.toBe(keys[0]);
+        expect(requests.every(([, options]) => options?.body === "{}")).toBe(
+          true,
+        );
+      } finally {
+        view.unmount();
+        vi.stubGlobal("EventSource", original);
+      }
+    },
+  );
   it("reauthorizes finite stream reconnects and clears revoked content without a manual refresh", async () => {
     history.replaceState({}, "", "/app/task");
     const mock = privateFetch();

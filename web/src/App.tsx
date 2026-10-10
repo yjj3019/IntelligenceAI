@@ -415,6 +415,7 @@ function WorkspaceApp() {
   const [confirm, setConfirm] = useState<{
     projectId: string;
     taskId: string;
+    generation: number;
     title: string;
     userId: string;
     routeKey: string;
@@ -744,14 +745,16 @@ function WorkspaceApp() {
     revision,
   ]);
 
-  function keyFor(operation: string, payload: unknown) {
-    const fingerprint =
-      session?.user.id +
-      ":" +
-      project?.id +
-      ":" +
-      operation +
-      JSON.stringify(payload);
+  function fingerprintFor(operation: string, payload: unknown) {
+    return JSON.stringify([
+      session?.user.id,
+      project?.id,
+      operation,
+      operation.startsWith("tasks/") ? task?.generation : null,
+      payload,
+    ]);
+  }
+  function keyFor(fingerprint: string) {
     if (!requestKeys.current.has(fingerprint))
       requestKeys.current.set(fingerprint, crypto.randomUUID());
     return requestKeys.current.get(fingerprint)!;
@@ -771,6 +774,7 @@ function WorkspaceApp() {
     )
       return;
     const epoch = requestEpoch.current;
+    const fingerprint = fingerprintFor(operation, payload);
     pending.current = true;
     setBusy(true);
     setError("");
@@ -779,7 +783,7 @@ function WorkspaceApp() {
       const result = await mutation<{ id?: string; state?: string }>(
         `/projects/${encodeURIComponent(project.id)}/${operation}`,
         session.csrf,
-        explicitKey || keyFor(operation, payload),
+        explicitKey || keyFor(fingerprint),
         payload,
         method,
       );
@@ -791,20 +795,15 @@ function WorkspaceApp() {
             : intent,
         );
       // Preserve uncertain retries, then release the key after a confirmed response.
-      requestKeys.current.delete(
-        session.user.id +
-          ":" +
-          project.id +
-          ":" +
-          operation +
-          JSON.stringify(payload),
-      );
+      requestKeys.current.delete(fingerprint);
       setFeedback(
         result.state === "CANCEL_REQUESTED"
           ? "Cancellation requested. Termination has not been confirmed."
           : result.state === "QUEUED"
             ? "Fixed fixture queued. No paid model or external action is authorized."
-            : "Saved to the private ledger. Execution remains disabled.",
+            : result.state === "VENDOR_QUEUED"
+              ? "Approved synthetic vendor queued. No paid model is authorized."
+              : "Saved to the private ledger. Execution remains disabled.",
       );
       if (operation === "tasks" && result.id) {
         setForm({ title: "", request: "", profile: "python-review" });
@@ -1707,6 +1706,27 @@ function WorkspaceApp() {
                           {t("Run fixed fixture")}
                         </button>
                         <button
+                          className="button primary"
+                          disabled={
+                            !active ||
+                            !canWrite ||
+                            busy ||
+                            task.state !== "READY_FOR_APPROVAL" ||
+                            !task.approval ||
+                            task.approval.expires_at <=
+                              Math.floor(Date.now() / 1000) ||
+                            connections?.fixture_execution !== "AUTHORIZED" ||
+                            task.vendor_runs?.some(
+                              (run) => run.generation === task.generation,
+                            )
+                          }
+                          onClick={() =>
+                            void perform(taskPath + "run-approved-fixture")
+                          }
+                        >
+                          {t("Run approved synthetic vendor")}
+                        </button>
+                        <button
                           className="button secondary"
                           onClick={() => navigate("candidate", task.id)}
                         >
@@ -1733,6 +1753,7 @@ function WorkspaceApp() {
                               setConfirm({
                                 projectId: project.id,
                                 taskId: task.id,
+                                generation: task.generation,
                                 title: task.title,
                                 userId: session.user.id,
                                 routeKey: routeIdentity(),
@@ -1798,6 +1819,35 @@ function WorkspaceApp() {
                                   ))}
                                 </ol>
                               </>
+                            )}
+                          </article>
+                        ))}
+                      </section>
+                    )}
+                    {!!task.vendor_runs?.length && (
+                      <section className="panel">
+                        <h2>{t("Approved synthetic vendor runs")}</h2>
+                        <p className="muted">
+                          {t(
+                            "These results come from a fixed fake executable. Live models and OS isolation remain unverified.",
+                          )}
+                        </p>
+                        {task.vendor_runs.map((run) => (
+                          <article className="receipt-card" key={run.id}>
+                            <code className="digest">{run.id}</code>
+                            <Badge state={run.state} />
+                            <p>
+                              {t(
+                                run.result?.termination_confirmed
+                                  ? "Synthetic process termination confirmed. Live model NOTRUN."
+                                  : "Receipt pending. Lease expiry does not confirm termination.",
+                              )}
+                            </p>
+                            {run.result?.output && (
+                              <p>
+                                {t(run.result.output.message)}:{" "}
+                                {run.result.output.value}
+                              </p>
                             )}
                           </article>
                         ))}
@@ -2334,6 +2384,7 @@ function WorkspaceApp() {
                   target.epoch !== requestEpoch.current ||
                   target.routeKey !== routeIdentity() ||
                   target.taskId !== task?.id ||
+                  target.generation !== task?.generation ||
                   target.projectId !== project?.id ||
                   target.userId !== session?.user.id
                 )

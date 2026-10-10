@@ -46,6 +46,16 @@ export function message(error: unknown): string {
         "An operator must provision an unexpired fixed-fixture capability before this task can be queued.",
       fixture_run_not_available:
         "This task cannot be queued in its current state. Refresh its saved status.",
+      execution_session_required:
+        "The execution session is no longer valid. Sign in again and review current authority.",
+      current_review_approval_required:
+        "A current bound review approval is required before synthetic execution.",
+      owned_fixture_receipt_required:
+        "Synthetic execution requires a verified receipt from the fixed core fixture.",
+      invocation_already_reserved:
+        "This generation already has a synthetic invocation. Refresh its receipt before recovery.",
+      approved_fixture_not_available:
+        "Synthetic execution is unavailable in this state. Refresh the task and its approval.",
       termination_receipt_required:
         "Recovery is blocked until a trusted termination receipt confirms the prior runner stopped. Do not clear its lease.",
       recovery_not_available:

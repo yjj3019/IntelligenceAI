@@ -62,6 +62,19 @@ export type Task = {
   source: string;
   artifacts?: Artifact[];
   approval?: Binding | null;
+  vendor_runs?: {
+    id: string;
+    generation: number;
+    state: string;
+    result: null | {
+      kind: "completed" | "terminated" | "never_started";
+      scope: "FAKE_VENDOR_TEST_ONLY";
+      live_model: "NOTRUN";
+      termination_confirmed: boolean;
+      returncode?: number;
+      output?: { message: string; value: number; status: "SYNTHETIC_OUTPUT" };
+    };
+  }[];
   runs?: {
     core_task_id: string;
     generation: number;

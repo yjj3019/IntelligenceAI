@@ -45,3 +45,5 @@ provider command. The separate [offline Linux executor](provider-isolation.md)
 uses a pinned internal manifest and cannot dispatch a live provider. Its evidence
 scope is independent of the PostgreSQL fixed-fixture grant. Credential brokering,
 provider-only egress and billing/resource enforcement remain unavailable.
+
+A second separate [fixed fake vendor supervisor](web-approved-vendor.md) consumes explicitly approved synthetic invocations from the same PostgreSQL ledger. The API records a unique task/generation reservation; current session, requester/approver roles and the exact private-review binding are rechecked at spawn. Results remain private and explicitly synthetic. Signed live statements are an independent stateless contract and cannot authorize this runner or any live provider.

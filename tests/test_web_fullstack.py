@@ -98,8 +98,47 @@ def test_signed_loopback_issuer_durable_admission_and_core_receipt(monkeypatch):
             )
             assert approval.status_code == 200 and approval.json()["execution_enabled"] is False
             assert client.get(task_path).json()["runs"] == task["runs"]
+            vendor_headers = {**headers, "Idempotency-Key": uid()}
+            reserved = client.post(
+                task_path + "/run-approved-fixture", json={}, headers=vendor_headers
+            )
+            assert reserved.status_code == 200
+            invocation_id = reserved.json()["invocation_id"]
+            assert reserved.json()["scope"] == "FAKE_VENDOR_TEST_ONLY"
+            assert (
+                client.post(
+                    task_path + "/run-approved-fixture", json={}, headers=vendor_headers
+                ).json()["invocation_id"]
+                == invocation_id
+            )
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                completed = client.get(task_path).json()
+                if completed["state"] == "FIXTURE_COMPLETED":
+                    break
+                time.sleep(0.1)
+            assert completed["state"] == "FIXTURE_COMPLETED", completed["state"]
+            assert len(completed["vendor_runs"]) == 1
+            result = completed["vendor_runs"][0]["result"]
+            assert result["scope"] == "FAKE_VENDOR_TEST_ONLY"
+            assert result["termination_confirmed"] is True and result["live_model"] == "NOTRUN"
+            assert result["model_calls"] == 0 and result["output"]["value"] == 42
+            output_artifact = next(
+                a for a in completed["artifacts"] if a["kind"] == "vendor-result"
+            )
+            private_result = client.get(task_path + "/artifacts/" + output_artifact["id"])
+            assert private_result.status_code == 200 and "SYNTHETIC_OUTPUT" in private_result.text
+            assert (
+                client.post(
+                    task_path + "/run-approved-fixture",
+                    json={},
+                    headers={**headers, "Idempotency-Key": uid()},
+                ).status_code
+                == 409
+            )
             assert client.post("/api/logout", json={}, headers=headers).status_code == 200
             assert client.get(task_path).status_code == 401
+            assert client.get(task_path + "/artifacts/" + output_artifact["id"]).status_code == 401
     finally:
         server.should_exit = True
         thread.join(timeout=100)
