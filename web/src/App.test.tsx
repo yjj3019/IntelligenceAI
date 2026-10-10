@@ -132,6 +132,8 @@ function privateFetch(
       else if (path === "/api/projects/" + project.id) body = project;
       else if (path.endsWith("/audit")) body = demoAudit;
       else if (path.endsWith("/connections")) body = demoConnections;
+      else if (path.endsWith("/local-cli"))
+        body = { profiles: [], requests: [], can_consent: true, generation: task.generation };
       else if (path.endsWith("/paid-review"))
         body = {
           profiles: [],

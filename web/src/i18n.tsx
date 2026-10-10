@@ -2,6 +2,45 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  "Bound input payload": "승인에 묶인 입력",
+  "Payload size and reported tokens are separate measurements. Actual token savings have not been measured.":
+    "입력 크기와 CLI가 보고한 토큰 수는 별도 지표입니다. 실제 토큰 절감률은 측정하지 않았습니다.",
+  "Server execution is disabled. Local CLI status appears in each task.":
+    "서버에서 실행하지 않습니다. 로컬 CLI 상태는 각 작업에서 확인합니다.",
+  "Local CLI requests have separate saved receipts. Static fixture receipts describe static checks only.":
+    "로컬 CLI 요청은 별도 실행 기록으로 확인합니다. 합성 fixture 기록은 정적 검사만 설명합니다.",
+  "YOUR LOCAL CLI": "내 로컬 CLI",
+  "Local CLI review": "로컬 CLI 검토",
+  "Use your own installed CLI and existing login. Installation and login status do not prove a model request will work.":
+    "본인의 설치된 CLI와 기존 로그인을 사용합니다. 설치·로그인 상태와 실제 호출 가능 여부는 별도로 확인합니다.",
+  "One CLI invocation, 60 seconds, one local worker, no automatic retry. Native internal requests and account usage remain provider-managed.":
+    "CLI 실행 1회·최대 60초·로컬 worker 1개로 제한하며 자동 재시도하지 않습니다. CLI 내부 요청과 계정 사용량은 각 서비스에서 관리합니다.",
+  "No official usage snapshot": "공식 사용량 조회 기록 없음",
+  "Not provided": "미제공",
+  Unknown: "미확인",
+  Resets: "초기화 시각",
+  "Loading saved CLI status": "저장된 CLI 상태 조회 중",
+  "No owner-bound local CLI is registered. Your credentials stay on your own machine.":
+    "본인에게 연결된 로컬 CLI가 없습니다. 인증 정보는 본인 PC에 보관합니다.",
+  "Your CLI": "내 CLI",
+  "Choose CLI": "CLI 선택",
+  "Authentication not checked": "로그인 상태 미확인",
+  "Account usage snapshot": "계정 한도 조회 기록",
+  "Prepare CLI approval": "CLI 실행 승인 준비",
+  "Saved CLI request": "저장된 CLI 요청",
+  "Candidate / evidence / policy": "후보 / 증거 / 정책",
+  "Approval expires": "승인 만료 시각",
+  "Result destination": "결과 저장 위치",
+  "Approve and queue once": "승인하고 1회 대기열 등록",
+  "Local process stopped": "로컬 프로세스 종료 확인",
+  "Remote cancellation": "원격 취소 상태",
+  "This execution's tokens": "이번 실행의 토큰 사용량",
+  "Results are private project artifacts. Refresh the task to view imported results.":
+    "결과는 비공개 프로젝트 산출물입니다. 작업을 새로 조회하면 가져온 결과를 볼 수 있습니다.",
+  "Refresh saved CLI status": "저장된 CLI 상태 새로 조회",
+  "Refreshing saved status never starts a model. Missing usage is unknown, not zero or unlimited.":
+    "저장 상태 조회는 모델을 실행하지 않습니다. 제공되지 않은 사용량은 0이나 무제한으로 표시하지 않습니다.",
+  "Advanced API review": "고급 API 검토",
   "PAID REVIEW / OPERATOR SETUP PENDING": "유료 검토 / 운영 구성 대기",
   "Approve one bounded model review": "상한이 정해진 모델 검토 1회 승인",
   "Each execution needs a fresh approval. This screen records consent and one request; it does not start a model or supply credentials.":

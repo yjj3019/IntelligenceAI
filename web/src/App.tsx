@@ -39,6 +39,7 @@ import type {
 import { api, ApiError, message, mutation } from "./api";
 import { LocaleProvider, LanguageSwitcher, useLocale } from "./i18n";
 import { PaidReviewPanel } from "./PaidReviewPanel";
+import { LocalCLIPanel } from "./LocalCLIPanel";
 import {
   demoAudit,
   demoConnections,
@@ -1158,7 +1159,7 @@ function WorkspaceApp() {
           <span>
             {active
               ? t(
-                  "Private ledger · Execution disabled. No paid model calls, repository execution or external effects.",
+                  "Server execution is disabled. Local CLI status appears in each task.",
                 )
               : t(
                   "Synthetic walkthrough · Sample tasks and evidence. No model has run. All demo mutations are disabled.",
@@ -1863,7 +1864,7 @@ function WorkspaceApp() {
                         </div>
                         <div>
                           <dt>{t("Model calls")}</dt>
-                          <dd>{task.model_calls}</dd>
+                          <dd>{task.model_calls ?? t("Unknown")}</dd>
                         </div>
                         <div>
                           <dt>{t("Evidence")}</dt>
@@ -1881,7 +1882,7 @@ function WorkspaceApp() {
                       <p className="muted">
                         {t(
                           active
-                            ? "Live model execution is NOTRUN. Fixed fixture receipts describe static checks only."
+                            ? "Local CLI requests have separate saved receipts. Static fixture receipts describe static checks only."
                             : "A sample status is an illustration. It does not mean a model or sandbox has executed.",
                         )}
                       </p>
@@ -2166,7 +2167,7 @@ function WorkspaceApp() {
                       </p>
                     </section>
                     {active && session && project && (
-                      <PaidReviewPanel
+                      <LocalCLIPanel
                         key={JSON.stringify([
                           session.user.id,
                           session.csrf,
@@ -2188,6 +2189,33 @@ function WorkspaceApp() {
                           setAuthNeeded(status === 401);
                         }}
                       />
+                    )}
+                    {active && session && project && (
+                      <details>
+                        <summary>{t("Advanced API review")}</summary>
+                        <PaidReviewPanel
+                          key={JSON.stringify([
+                            session.user.id,
+                            session.csrf,
+                            project.id,
+                            task.id,
+                            task.generation,
+                            task.state,
+                            task.candidate_digest,
+                            task.evidence_digest,
+                            project.policy_digest,
+                            project.role,
+                          ])}
+                          projectId={project.id}
+                          taskId={task.id}
+                          generation={task.generation}
+                          csrf={session.csrf}
+                          onAuthorityLost={(status) => {
+                            clearPrivate();
+                            setAuthNeeded(status === 401);
+                          }}
+                        />
+                      </details>
                     )}
                   </div>
                 ) : (

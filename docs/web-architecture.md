@@ -62,3 +62,7 @@ scope is independent of the PostgreSQL fixed-fixture grant. Credential brokering
 provider-only egress and billing/resource enforcement remain unavailable.
 
 A second separate [fixed fake vendor supervisor](web-approved-vendor.md) consumes explicitly approved synthetic invocations from the same PostgreSQL ledger. The API records a unique task/generation reservation; current session, requester/approver roles and the exact private-review binding are rechecked at spawn. Results remain private and explicitly synthetic. Signed live statements are an independent stateless contract and cannot authorize this runner or any live provider.
+
+## Own local CLI path
+
+[Local CLI review](local-cli.md) is a separate owner-bound native worker and two additive PostgreSQL tables. Session/CSRF-protected API preparation and approval create a durable queue item; the HTTP process never starts a vendor CLI. Each native login stays on that user's machine. This initial release requires operator-provisioned private ledger access and does not implement hosted worker enrollment. Existing API broker remains optional.

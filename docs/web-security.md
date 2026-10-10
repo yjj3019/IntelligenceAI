@@ -52,3 +52,7 @@ across pinning/launch; hostile host mutation and cgroup quotas are not implement
 Provider and generated-code network separation still requires a verified broker.
 
 The [approved fake vendor supervisor](web-approved-vendor.md) requires a current server session, requester and approver roles, bound current review approval and operator fixture grant, with durable one-time task/generation reservation and current-authority checks at Popen. Its child accepts only a fixed bounded synthetic descriptor and inherits no secrets. STARTING cannot be replayed without actual termination proof; lease expiry never proves cancellation. This path does not use the signed live receipt verifier or unlock any live provider.
+
+## Native owner-bound worker
+
+The [local CLI path](local-cli.md) accepts no HTTP command, executable, absolute path, environment, actor override, credential or live flag. Operator-local registration binds the binary/version to one existing web owner and project. Native credentials remain local, standard environment variables alone reach the child, and output is bounded/redacted before storage. Job/process-group cleanup is separate from remote cancellation and hostile-code OS isolation. A consumed/unknown request is never replayed or cleared by recovery. No public worker enrollment or credential migration is supplied.
