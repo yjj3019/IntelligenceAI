@@ -1,5 +1,13 @@
 # Private API v1
 
+Owner browser routes: GET `/api/projects/{project}/pcs`, POST `/pcs/pair`
+(`provider`), POST `/pcs/{id}/confirm` (`manifest_digest`) and `/revoke` (`{}`).
+Existing session, owner/project authorization, CSRF and idempotency apply.
+Machine bearer routes: POST `/api/pc/exchange`, `/claim`, `/start`, `/heartbeat`,
+`/result`. Cookies never grant access. Strict schemas reject argv/path/env/actor/
+project fields. Attempts bind task/generation/digest/lease and are consumed once.
+See [typed contracts and device report semantics](pc-connection.md).
+
 The private console additionally records [paid review consent and one-time
 operator-admission requests](paid-admission.md). Browser mutations record only
 consent and one request. The separate [private dispatcher](paid-dispatch.md)

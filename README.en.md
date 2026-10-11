@@ -1,5 +1,9 @@
 # IntelligenceAI
 
+[Owner-approved PC connection](docs/pc-connection.md) links a scoped local client
+to the private console over outbound HTTPS without DB/OIDC secrets. This feature
+has synthetic verification; real enrollment and production activation remain pending.
+
 The private console now offers [your own local CLI review](docs/local-cli.md) as the primary review path. Installation, native login status and user-requested execution results are separate. Approved jobs run in a separate owner-bound local worker; subscription/billing stays with the AI service. Account windows and per-run tokens are shown separately. Existing API review remains an advanced option.
 
 The private console records [bounded paid-review consent and one-time

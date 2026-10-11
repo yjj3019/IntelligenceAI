@@ -78,7 +78,9 @@ quota JSON is not verified; display `NOT_PROVIDED`. GUI refresh reads saved data
 Keep the existing supported OIDC/server session and private PostgreSQL deployment.
 Do not ship a public write demo or share one machine's CLI login across web users.
 This initial worker requires private operator-provisioned ledger access on that
-user's machine; a hosted multi-user worker enrollment protocol is not implemented.
+user's machine. The separate [outbound PC client](pc-connection.md) implements
+owner-approved hosted enrollment without DB/OIDC secrets; use that route for a
+user PC connected to a private web console.
 The public synthetic demo does not register profiles or launch this worker.
 
 Apply additive tables with `python -m intelligenceai.web.manage init-db` using the

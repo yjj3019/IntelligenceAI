@@ -26,11 +26,20 @@ def native_environment():
 
 class LocalProcess:
     def __init__(
-        self, argv, cwd, prompt, *, before_start=lambda: nullcontext(lambda: None), mode="prompt"
+        self,
+        argv,
+        cwd,
+        prompt,
+        *,
+        before_start=lambda: nullcontext(lambda: None),
+        mode="prompt",
+        on_spawn=None,
     ):
         self.buffers = [bytearray(), bytearray()]
         self.overflow = threading.Event()
         self.job = None
+        self._close_lock = threading.Lock()
+        self._close_result = None
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         self.process = subprocess.Popen(
             [sys.executable, "-I", "-S", str(Path(cli_gate.__file__).resolve())],
@@ -73,6 +82,8 @@ class LocalProcess:
                 thread = threading.Thread(target=self._drain, args=(index, stream), daemon=True)
                 thread.start()
                 self.threads.append(thread)
+            if on_spawn is not None:
+                on_spawn(self)
             envelope = json.dumps(
                 {"argv": argv, "cwd": str(cwd), "prompt": prompt, "mode": mode},
                 ensure_ascii=False,
@@ -100,6 +111,12 @@ class LocalProcess:
 
     def close(self):
         """Returns proof of local tree exit, never proof of remote model cancellation."""
+        with self._close_lock:
+            if self._close_result is None:
+                self._close_result = self._close()
+            return self._close_result
+
+    def _close(self):
         confirmed = False
         try:
             if self.job is not None:

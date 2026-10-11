@@ -16,6 +16,8 @@ from intelligenceai.web.store import (
     members,
     now,
     paid_reviews,
+    pc_attempts,
+    pc_runners,
     sessions,
     tasks,
     uid,
@@ -79,6 +81,27 @@ class LocalCLI:
                     .limit(10)
                 ).mappings()
             ]
+            expired = set(
+                conn.execute(
+                    select(pc_attempts.c.request_id).where(
+                        pc_attempts.c.request_id.in_([row["id"] for row in records]),
+                        pc_attempts.c.state.in_(["CLAIMED", "STARTED"]),
+                        pc_attempts.c.expires_at <= now(),
+                    )
+                ).scalars()
+            )
+            for record in records:
+                if record["id"] in expired:
+                    record["state"] = "UNKNOWN"
+                    record["result"] = {
+                        "scope": "PC_REPORTED",
+                        "live_model": "UNKNOWN",
+                        "availability": "EXECUTION_ERROR",
+                        "local_termination_confirmed": False,
+                        "remote_cancellation": "UNKNOWN",
+                        "cli_invocations": None,
+                        "model_calls": None,
+                    }
             return {
                 "profiles": available,
                 "requests": records,
@@ -148,6 +171,28 @@ class LocalCLI:
         )
         if not row or row["metadata"].get("can_execute") is not True:
             raise Problem(409, "cli_restrictions_unverified")
+        if row["metadata"].get("transport") == "OUTBOUND_PC":
+            runner = (
+                conn.execute(
+                    select(pc_runners)
+                    .where(
+                        pc_runners.c.id == row["metadata"]["runner_id"],
+                        pc_runners.c.actor_id == actor,
+                        pc_runners.c.project_id == project_id,
+                        pc_runners.c.profile_id == identifier,
+                    )
+                    .with_for_update()
+                )
+                .mappings()
+                .first()
+            )
+            if (
+                not runner
+                or runner["state"] != "ACTIVE"
+                or runner["expires_at"] <= now()
+                or (runner["manifest_digest"] != row["metadata"]["registration_digest"])
+            ):
+                raise Problem(409, "pc_registration_changed")
         return row
 
     def prompt(self, conn, task):
@@ -224,6 +269,14 @@ class LocalCLI:
             "automatic_retry": False,
             "result_destination": "private-cli-review",
             "payload": self.prompt(conn, task)[1],
+            **(
+                {
+                    "runner_id": profile["metadata"]["runner_id"],
+                    "registration_digest": profile["metadata"]["registration_digest"],
+                }
+                if profile["metadata"].get("transport") == "OUTBOUND_PC"
+                else {}
+            ),
         }
 
     def current(self, conn, row, states):

@@ -7,6 +7,7 @@ from http.cookies import SimpleCookie
 
 from sqlalchemy import insert, select, update
 
+from intelligenceai.web.pc_contracts import PC_ROUTES
 from intelligenceai.web.service import session_data
 from intelligenceai.web.store import now, sessions
 
@@ -22,6 +23,9 @@ class ServerSessions:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        if scope["path"] in PC_ROUTES:
+            # Machine endpoints never load or issue a browser session.
             return await self.app(scope, receive, send)
         headers = dict(scope["headers"])
         cookies = SimpleCookie()

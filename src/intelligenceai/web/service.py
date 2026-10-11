@@ -20,6 +20,7 @@ from intelligenceai.web.store import (
     members,
     now,
     paid_requests,
+    pc_attempts,
     projects,
     receipts,
     sessions,
@@ -115,7 +116,9 @@ class Service:
             conn.execute(
                 select(local_cli_requests).where(
                     local_cli_requests.c.task_id == row["id"],
-                    local_cli_requests.c.state.in_(["STARTING", "RUNNING", "UNKNOWN", "COMPLETED"]),
+                    local_cli_requests.c.state.in_(
+                        ["STARTING", "RUNNING", "UNKNOWN", "COMPLETED", "FAILED"]
+                    ),
                 )
             )
             .mappings()
@@ -126,6 +129,14 @@ class Service:
         ):
             result["model_calls"] = None
         counts = [run["result"].get("cli_invocations") if run["result"] else None for run in local]
+        if conn.execute(
+            select(pc_attempts.c.id).where(
+                pc_attempts.c.request_id.in_([run["id"] for run in local]),
+                pc_attempts.c.state.in_(["CLAIMED", "STARTED"]),
+                pc_attempts.c.expires_at <= now(),
+            )
+        ).first():
+            result["state"] = "BLOCKED"
         result["local_cli_invocations"] = (
             None if any(value is None for value in counts) else sum(counts)
         )
@@ -410,7 +421,16 @@ class Service:
             )
             if local:
                 confirmed = local["state"] in {"PREPARED", "QUEUED"} and job["lease_token"] is None
-                if confirmed:
+                device_cancelled = bool(
+                    local["result"]
+                    and local["result"].get("scope") == "PC_REPORTED"
+                    and local["result"].get("device_cleanup_reported") is True
+                    and local["result"].get("outcome") == "CANCELLED"
+                    and job["lease_token"] is None
+                )
+                if device_cancelled:
+                    confirmed = True
+                if confirmed and not device_cancelled:
                     conn.execute(
                         update(local_cli_requests)
                         .where(local_cli_requests.c.id == local["id"])

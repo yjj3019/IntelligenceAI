@@ -1,5 +1,11 @@
 # Web boundary
 
+The [owner PC connection](pc-connection.md) reuses the CLI consent queue through
+five narrow outbound HTTPS routes. Scoped device capabilities never grant DB,
+OIDC or browser authority. Atomic start is the authorization point; subsequent
+cancellation is best effort and device reports are not OS attestation. This path
+is separate from the direct DB worker and paid Linux runner.
+
 The [paid consent/request ledger](paid-admission.md) adds two PostgreSQL tables
 for privately provisioned model profiles and session-bound quotes. The same
 HTTP service records explicit consent and one request per generation, without

@@ -59,7 +59,7 @@ class FakeRuntime:
             }
         )
 
-    def start(self, cwd, prompt, before_start):
+    def start(self, cwd, prompt, before_start, *, on_spawn=None):
         self.calls += 1
 
         @contextmanager
@@ -84,6 +84,7 @@ class FakeRuntime:
             cwd,
             prompt,
             before_start=gate,
+            on_spawn=on_spawn,
         )
 
 
