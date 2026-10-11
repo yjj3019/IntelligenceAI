@@ -1,5 +1,8 @@
 # GUI 실행·배포 안내
 
+이어서 운영 검증을 진행할 때는 [운영 인계](operator-handoff.md)의 기준 commit,
+미완료 항목·승인 순서·checkpoint와 rollback 조건을 먼저 확인합니다.
+
 [내 PC 연결](pc-connection.ko.md)은 기존 same-origin API와 PostgreSQL을 사용한다.
 `web_pc_runners`, `web_pc_attempts`를 검토한 schema 초기화·migration 절차로 추가한다.
 새 서버 비밀·issuer·PC inbound 포트는 필요하지 않다. reverse proxy는 요청 본문과

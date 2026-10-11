@@ -1,5 +1,8 @@
 # IntelligenceAI
 
+[다음 운영 작업 인계](docs/operator-handoff.md)에 현재 구현 commit·검증 근거,
+실제 CLI 관찰, 미완료 운영 항목과 승인·배포·복구 순서를 기록했습니다.
+
 [내 PC 연결](docs/pc-connection.ko.md)을 구현했다. 소유자가 장치 지문을 확인하고 승인한
 PC에 한정된 작업을 보낸다. PC는 서버 DB·OIDC 비밀 없이 HTTPS 연결을 사용한다.
 이번 검증은 합성 환경이며 실제 PC 등록·운영 배포·추가 모델 호출은 미실시다.
