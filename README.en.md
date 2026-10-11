@@ -1,5 +1,8 @@
 # IntelligenceAI
 
+Read the [operator handoff and English summary](docs/operator-handoff.md#english-summary)
+for the verified baseline, remaining deployment work and approval/rollback boundaries.
+
 [Owner-approved PC connection](docs/pc-connection.md) links a scoped local client
 to the private console over outbound HTTPS without DB/OIDC secrets. This feature
 has synthetic verification; real enrollment and production activation remain pending.
