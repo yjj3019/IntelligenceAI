@@ -1,5 +1,18 @@
 # 내 PC 연결
 
+HTTP 응답 대기와 별도로 실행 deadline watchdog이 소유 프로세스를 종료합니다.
+최종 승인 heartbeat를 기다리는 gate에도 적용하며 응답 뒤 monotonic deadline을
+다시 검사한 다음에만 native stdin을 전달합니다. 최종 gate와 실행 중 응답 지연을
+각각 합성 회귀 테스트로 검증합니다.
+
+완료 결과 journal을 저장한 뒤 브라우저 취소가 확정되면 같은 binding의 cleanup
+보고로 lease를 정리하고 결과를 `CANCELLED`로 기록합니다. 결과 본문은 가져오지
+않으며 같은 journal 재전송으로 CLI를 다시 실행하지 않습니다. 다른 내용이나
+지난 generation의 업로드는 계속 거부합니다.
+
+원격 usage는 PC가 보고한 입력·출력 토큰만 포함하는 `INPUT_OUTPUT_ONLY`입니다.
+캐시·추론 토큰과 측정 시각은 제공되지 않습니다. 누락된 값은 0이 아닌 미확인 값입니다.
+
 private 콘솔에서 프로젝트 소유자가 자기 PC를 등록하고 연결을 승인한다. PC는 서버로
 HTTPS 요청만 보내며 DB URL, 브라우저 세션, OIDC 비밀을 받지 않는다. 기존 CLI 로그인은
 PC에 그대로 둔다. 웹 화면을 열어도 설치나 실행을 시작하지 않는다.

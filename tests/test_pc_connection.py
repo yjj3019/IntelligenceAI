@@ -405,7 +405,10 @@ def test_cancellation_is_requested_before_device_cleanup_report(fixture, tmp_pat
     )
     assert response.json()["state"] == "CANCEL_REQUESTED"
     assert machine(f, "heartbeat", bound).json()["continue"] is False
-    assert machine(f, "result", report(bound)).status_code == 409
+    assert (
+        machine(f, "result", report(bound, outcome="FAILED", cleanup_reported=False)).status_code
+        == 409
+    )
     assert machine(f, "result", report(bound, outcome="CANCELLED", text="")).status_code == 200
     assert f["client"].get(f["base"] + f"/tasks/{tid}").json()["state"] == "CANCELLED"
     again = f["client"].post(
@@ -430,6 +433,56 @@ def test_expired_lease_stale_upload_does_not_replay(fixture, tmp_path):
     assert machine(f, "claim").json()["attempt"] is None
     with f["db"].connect() as conn:
         assert conn.execute(select(local_cli_requests.c.state)).scalar_one() == "UNKNOWN"
+
+
+def test_cancel_after_immutable_completed_journal_closes_same_attempt_without_replay(
+    fixture, tmp_path
+):
+    f = fixture
+    tid, _, headers, _, runtime, _ = queued(f, tmp_path)
+    root = tmp_path / "pc-cancel-race"
+
+    class CancelBeforeUpload(FixtureAPI):
+        cancelled = False
+
+        def call(self, action, data):
+            if action == "result" and not self.cancelled:
+                self.cancelled = True
+                saved = json.loads(
+                    (root / (data["attempt_id"] + ".json")).read_text(encoding="utf-8")
+                )
+                assert saved["result"] == data and data["outcome"] == "COMPLETED"
+                response = f["client"].post(
+                    f["base"] + f"/tasks/{tid}/cancel",
+                    json={},
+                    headers={**headers, "Idempotency-Key": uid()},
+                )
+                assert response.json()["state"] == "CANCEL_REQUESTED"
+                accepted = super().call(action, data)
+                assert accepted["outcome"] == "CANCELLED"
+                raise TimeoutError("synthetic accepted upload response lost")
+            return super().call(action, data)
+
+    client = Client(CancelBeforeUpload(f), runtime, root)
+    with pytest.raises(TimeoutError):
+        client.once()
+    journal = next(root.glob("*.json"))
+    assert client.retry_result(journal.stem)["outcome"] == "CANCELLED"
+    assert client.once() is False and runtime.calls == 1
+    with f["db"].connect() as conn:
+        assert (
+            conn.execute(select(jobs.c.lease_token).where(jobs.c.task_id == tid)).scalar_one()
+            is None
+        )
+        assert (
+            conn.execute(select(tasks.c.state).where(tasks.c.id == tid)).scalar_one() == "CANCELLED"
+        )
+        assert not conn.execute(
+            select(artifacts.c.id).where(artifacts.c.kind == "cli-result")
+        ).first()
+    bound = json.loads(journal.read_text(encoding="utf-8"))["result"]
+    assert machine(f, "result", bound | {"generation": 99}).status_code == 409
+    assert machine(f, "result", bound | {"text": "different"}).status_code == 409
 
 
 class FixtureAPI:
@@ -568,6 +621,106 @@ def test_local_runtime_change_cannot_execute_server_work(fixture, tmp_path):
     with pytest.raises(ValueError, match="allowlist_changed"):
         Client(FixtureAPI(f), runtime, tmp_path / "pc").once()
     assert runtime.calls == 0
+
+
+def test_delayed_final_heartbeat_cannot_release_native_stdin_after_deadline(
+    fixture, tmp_path, monkeypatch
+):
+    import time
+    from types import SimpleNamespace
+
+    from intelligenceai.web import pc_client
+
+    f = fixture
+    _, _, _, _, runtime, _ = queued(f, tmp_path)
+    clock = {"now": 0.0}
+    monkeypatch.setattr(
+        pc_client, "time", SimpleNamespace(monotonic=lambda: clock["now"], time=time.time)
+    )
+
+    class DelayedFinalGate(FixtureAPI):
+        checks = 0
+
+        def call(self, action, data):
+            value = super().call(action, data)
+            if action == "heartbeat":
+                self.checks += 1
+                if self.checks == 2:
+                    clock["now"] = 61.0
+            return value
+
+    root = tmp_path / "pc-gate-deadline"
+    client = Client(DelayedFinalGate(f), runtime, root)
+    assert client.once() is True
+    # The wrapper was entered, but its gate never launched the fake native CLI.
+    assert not runtime.launched.is_set()
+    assert not list(root.glob("*/input-capture.json"))
+    saved = json.loads(next(root.glob("*.json")).read_text(encoding="utf-8"))
+    assert saved["result"]["outcome"] == "CANCELLED"
+    assert client.once() is False
+
+
+@pytest.mark.parametrize("blocked_check", [2, 3], ids=["final-gate", "running"])
+def test_deadline_watchdog_closes_owned_tree_while_heartbeat_waits(
+    fixture, tmp_path, monkeypatch, blocked_check
+):
+    import time
+    from threading import Event
+
+    from intelligenceai.web import pc_client
+
+    f = fixture
+    _, _, _, _, runtime, _ = queued(f, tmp_path)
+    runtime.mode = "descendant"
+    monkeypatch.setattr(pc_client, "HEARTBEAT_SECONDS", 0.01)
+    entered, release = Event(), Event()
+    owned = []
+    original = runtime.start
+
+    def start(*args, **kwargs):
+        attach = kwargs["on_spawn"]
+
+        def attached(value):
+            owned.append(value)
+            attach(value)
+
+        return original(*args, **(kwargs | {"on_spawn": attached}))
+
+    runtime.start = start
+
+    class BlockedRunningHeartbeat(FixtureAPI):
+        checks = 0
+
+        def call(self, action, data):
+            value = super().call(action, data)
+            if action == "start":
+                value["deadline"] = time.time() + 2
+            if action == "heartbeat":
+                self.checks += 1
+                if self.checks == blocked_check:
+                    entered.set()
+                    assert release.wait(timeout=10)
+            return value
+
+    client = Client(BlockedRunningHeartbeat(f), runtime, tmp_path / "pc-watchdog")
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(client.once)
+        try:
+            assert entered.wait(timeout=5)
+            # Main execution is still blocked in HTTP, yet watchdog has terminated it.
+            owned[0].process.wait(timeout=4)
+            assert owned[0].process.poll() is not None
+            assert not future.done()
+        finally:
+            release.set()
+        assert future.result(timeout=10) is True
+    saved = json.loads(next(client.root.glob("*.json")).read_text(encoding="utf-8"))
+    assert saved["result"]["cleanup_reported"] is True
+    assert saved["result"]["outcome"] == "CANCELLED"
+    assert runtime.calls == 1 and client.once() is False
+    if blocked_check == 2:
+        assert not runtime.launched.is_set()
+        assert not list(client.root.glob("*/input-capture.json"))
 
 
 def test_result_cannot_claim_completion_without_consistent_report(fixture, tmp_path):

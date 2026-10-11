@@ -507,8 +507,9 @@ class PCs:
             if not cancelled:
                 self.cli.current(conn, row, {"RUNNING"})
             else:
-                # Cancellation receipt may close the old lease; never import its text.
-                if data.outcome != "CANCELLED":
+                # A completed immutable journal can race a browser cancellation.
+                # Accept its exact bound cleanup, discard text and preserve upload identity.
+                if not data.cleanup_reported or data.outcome == "UNKNOWN":
                     raise Problem(409, "pc_cancel_receipt_required")
             closed = data.cleanup_reported and data.outcome != "UNKNOWN"
             completed = closed and not cancelled and data.outcome == "COMPLETED"
@@ -539,12 +540,15 @@ class PCs:
                 "remote_cancellation": "DEVICE_REPORTED" if cancelled and closed else "UNKNOWN",
                 "usage": {
                     "source": "USER_DEVICE_REPORT",
+                    "unit": "tokens",
+                    "completeness": "INPUT_OUTPUT_ONLY",
+                    "measured_at": None,
                     "values": {
                         "input_tokens": data.input_tokens,
                         "output_tokens": data.output_tokens,
                     },
                 },
-                "outcome": data.outcome,
+                "outcome": "CANCELLED" if cancelled and closed else data.outcome,
                 "payload": row["binding"]["payload"],
             }
             state = "COMPLETED" if completed else "FAILED" if closed else "UNKNOWN"

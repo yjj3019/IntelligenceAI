@@ -2,6 +2,9 @@ import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export const ko = {
+  INPUT_OUTPUT_ONLY: "입력·출력만 제공",
+  "PC usage includes only input/output tokens. Cache, reasoning and measurement time are not provided.":
+    "PC 사용량은 입력·출력 토큰만 제공합니다. cache·reasoning·측정 시각은 미제공입니다.",
   "This profile runs on your approved PC over outbound HTTPS. The direct DB worker is separate.":
     "이 프로필은 승인한 내 PC에서 HTTPS 연결로 실행합니다. DB에 직접 연결하는 worker와 구분됩니다.",
   "Device cleanup reported": "장치가 보고한 종료",

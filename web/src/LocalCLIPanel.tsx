@@ -259,7 +259,7 @@ export function LocalCLIPanel({
     <div className="muted">
       <p>
         {usage?.source || t("No official usage snapshot")} ·{" "}
-        {usage?.status || usage?.completeness || t("Not provided")}
+        {t(usage?.status || usage?.completeness || "Not provided")}
         {usage?.measured_at != null && <> · {formatDate(usage.measured_at)}</>}
       </p>
       {usage?.values && (
@@ -438,6 +438,13 @@ export function LocalCLIPanel({
                       {t("Device cleanup reported")}:{" "}
                       {String(record.result.device_cleanup_reported)}.{" "}
                       {t("Device results and usage are unverified reports.")}
+                    </p>
+                  )}
+                  {record.result.scope === "PC_REPORTED" && (
+                    <p className="muted">
+                      {t(
+                        "PC usage includes only input/output tokens. Cache, reasoning and measurement time are not provided.",
+                      )}
                     </p>
                   )}
                   <p>

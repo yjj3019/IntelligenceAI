@@ -31,10 +31,13 @@ export function PCPanel({
   const [provider, setProvider] = useState("codex");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reading, setReading] = useState(false);
   const [error, setError] = useState("");
   const [reviewed, setReviewed] = useState("");
   const epoch = useRef(0);
   const pending = useRef(false);
+  const reads = useRef(0);
+  const readPending = useRef(false);
   const keys = useRef(new Map<string, string>());
   const lost = useRef(onAuthorityLost);
   lost.current = onAuthorityLost;
@@ -42,25 +45,40 @@ export function PCPanel({
 
   useEffect(() => {
     const generation = ++epoch.current;
+    const sequence = ++reads.current;
+    readPending.current = true;
+    setReading(true);
     api<Device[]>(path)
       .then((value) => {
         if (!Array.isArray(value)) throw new Error("invalid device response");
-        if (epoch.current === generation) setDevices(value);
+        if (epoch.current === generation && reads.current === sequence)
+          setDevices(value);
       })
       .catch((err: unknown) => {
-        if (epoch.current !== generation) return;
+        if (epoch.current !== generation || reads.current !== sequence) return;
         setError(message(err));
         if (err instanceof ApiError && [401, 403, 404].includes(err.status))
           lost.current(err.status);
+      })
+      .finally(() => {
+        if (epoch.current === generation && reads.current === sequence) {
+          readPending.current = false;
+          setReading(false);
+        }
       });
     return () => {
       epoch.current++;
+      reads.current++;
     };
   }, [path]);
 
   async function act(action: string, body: unknown) {
     if (pending.current) return;
     const generation = epoch.current;
+    // A mutation supersedes every earlier read without delaying explicit revocation.
+    reads.current++;
+    readPending.current = false;
+    setReading(false);
     pending.current = true;
     setBusy(true);
     setError("");
@@ -77,9 +95,11 @@ export function PCPanel({
       keys.current.delete(action);
       setCode(result.pairing_code || "");
       setReviewed("");
+      const sequence = ++reads.current;
       const latest = await api<Device[]>(path);
       if (!Array.isArray(latest)) throw new Error("invalid device response");
-      if (epoch.current === generation) setDevices(latest);
+      if (epoch.current === generation && reads.current === sequence)
+        setDevices(latest);
     } catch (err) {
       if (epoch.current !== generation) return;
       setError(message(err));
@@ -96,23 +116,31 @@ export function PCPanel({
   }
 
   async function refresh() {
-    if (pending.current) return;
+    if (pending.current || readPending.current) return;
     const generation = epoch.current;
+    const sequence = ++reads.current;
+    readPending.current = true;
+    setReading(true);
     try {
       const latest = await api<Device[]>(path);
       if (!Array.isArray(latest)) throw new Error("invalid device response");
-      if (epoch.current === generation) {
+      if (epoch.current === generation && reads.current === sequence) {
         setDevices(latest);
         setError("");
         setReviewed("");
       }
     } catch (err) {
-      if (epoch.current !== generation) return;
+      if (epoch.current !== generation || reads.current !== sequence) return;
       setError(message(err));
       if (err instanceof ApiError && [401, 403, 404].includes(err.status)) {
         setDevices([]);
         setCode("");
         lost.current(err.status);
+      }
+    } finally {
+      if (epoch.current === generation && reads.current === sequence) {
+        readPending.current = false;
+        setReading(false);
       }
     }
   }
@@ -147,7 +175,7 @@ export function PCPanel({
       <button disabled={busy} onClick={() => void act("pair", { provider })}>
         {t("Create one-time pairing code")}
       </button>
-      <button disabled={busy} onClick={() => void refresh()}>
+      <button disabled={busy || reading} onClick={() => void refresh()}>
         {t("Refresh devices")}
       </button>
       {code && (

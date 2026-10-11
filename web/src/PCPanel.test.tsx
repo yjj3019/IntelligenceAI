@@ -167,3 +167,75 @@ it("Korean device actions are readable and expired proposals cannot be approved"
   fireEvent.click(await screen.findByRole("checkbox"));
   expect(screen.getByRole("button", { name: "이 PC 승인" })).toBeDisabled();
 });
+
+it.each([
+  ["initial", "confirm"],
+  ["initial", "revoke"],
+  ["manual", "confirm"],
+  ["manual", "revoke"],
+])(
+  "late %s GET cannot undo %s and its latest saved status",
+  async (mode, action) => {
+    let resolve!: (value: Response) => void;
+    let reads = 0;
+    let state = action === "confirm" ? "PENDING" : "ACTIVE";
+    const fetcher = vi.fn().mockImplementation((input, options) => {
+      if (options?.method === "POST") {
+        if (String(input).endsWith("/confirm")) state = "ACTIVE";
+        if (String(input).endsWith("/revoke")) state = "REVOKED";
+        return Promise.resolve(response({ state }));
+      }
+      reads++;
+      if (reads === (mode === "initial" ? 1 : 2)) {
+        return new Promise<Response>((done) => {
+          resolve = done;
+        });
+      }
+      return Promise.resolve(response([{ ...device, state }]));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(panel());
+    if (mode === "initial") {
+      await waitFor(() => expect(reads).toBe(1));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Create one-time pairing code" }),
+      );
+    }
+    await screen.findByText("device");
+    if (mode === "manual") {
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Refresh devices" }),
+        ).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Refresh devices" }));
+      expect(
+        screen.getByRole("button", { name: "Refresh devices" }),
+      ).toBeDisabled();
+    }
+    if (action === "confirm") {
+      fireEvent.click(screen.getByRole("checkbox"));
+      fireEvent.click(screen.getByRole("button", { name: "Approve this PC" }));
+    } else {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Review disconnect" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Disconnect this PC" }),
+      );
+    }
+    const finalState = action === "confirm" ? "ACTIVE" : "REVOKED";
+    await screen.findByRole("heading", { name: "codex · " + finalState });
+    await act(async () =>
+      resolve(
+        response([
+          { ...device, state: action === "confirm" ? "PENDING" : "ACTIVE" },
+        ]),
+      ),
+    );
+    expect(
+      screen.getByRole("heading", { name: "codex · " + finalState }),
+    ).toBeInTheDocument();
+    expect(props.onAuthorityLost).not.toHaveBeenCalled();
+  },
+);

@@ -129,7 +129,7 @@ class NativeRuntime:
             }
         )
 
-    def start(self, cwd, prompt, before_start):
+    def start(self, cwd, prompt, before_start, *, on_spawn=None):
         if not self.manifest()["can_execute"]:
             raise RuntimeError("native_cli_restrictions_unverified")
         if hashlib.sha256(self.executable.read_bytes()).hexdigest() != self.binary_digest:
@@ -202,7 +202,7 @@ class NativeRuntime:
                     "-",
                 ]
             )
-        return LocalProcess(argv, cwd, prompt, before_start=before_start)
+        return LocalProcess(argv, cwd, prompt, before_start=before_start, on_spawn=on_spawn)
 
     def quota(self, cwd):
         value = {

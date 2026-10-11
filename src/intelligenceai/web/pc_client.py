@@ -10,6 +10,7 @@ import subprocess
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Event, Lock, Timer
 from urllib.parse import urlsplit
 
 import httpx
@@ -18,6 +19,8 @@ from intelligenceai.security import clean, digest
 from intelligenceai.web.cli_results import parse
 from intelligenceai.web.cli_runtime import NativeRuntime
 from intelligenceai.web.pc_contracts import AttemptInput, ResultInput
+
+HEARTBEAT_SECONDS = 2
 
 
 def save(path, value, *, exclusive=False):
@@ -108,14 +111,16 @@ class Client:
             time.monotonic() + 60, time.monotonic() + max(0, grant["deadline"] - time.time())
         )
         cancelled = False
+        expired = Event()
 
         @contextmanager
         def boundary():
             def check():
-                if (
-                    time.monotonic() >= deadline
-                    or self.api.call("heartbeat", bound.model_dump()).get("continue") is not True
-                ):
+                if expired.is_set() or time.monotonic() >= deadline:
+                    raise RuntimeError("pc_authority_changed")
+                allowed = self.api.call("heartbeat", bound.model_dump()).get("continue") is True
+                # HTTP timeouts are per operation/chunk, not the execution wall clock.
+                if not allowed or expired.is_set() or time.monotonic() >= deadline:
                     raise RuntimeError("pc_authority_changed")
 
             check()
@@ -125,18 +130,48 @@ class Client:
         workspace.mkdir(mode=0o700)
         process = None
         closed = False
+        cleanup_done = False
+        cleanup_lock = Lock()
+
+        def cleanup():
+            nonlocal closed, cleanup_done
+            with cleanup_lock:
+                if process is not None and not cleanup_done:
+                    cleanup_done = True
+                    try:
+                        closed = process.close()
+                    except Exception:
+                        closed = False
+
+        def expire():
+            expired.set()
+            cleanup()
+
+        watchdog = Timer(max(0, deadline - time.monotonic()), expire)
+        watchdog.daemon = True
+        watchdog.start()
+
+        def attached(owned):
+            nonlocal process
+            process = owned
+            if expired.is_set():
+                cleanup()
+
         try:
-            process = self.runtime.start(workspace, claim["prompt"], boundary)
-            next_heartbeat = time.monotonic() + 2
+            process = self.runtime.start(workspace, claim["prompt"], boundary, on_spawn=attached)
+            if expired.is_set():
+                cleanup()
+            next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
             while process.process.poll() is None:
-                if process.overflow.is_set() or time.monotonic() >= deadline:
+                if process.overflow.is_set() or expired.is_set() or time.monotonic() >= deadline:
                     cancelled = True
                     break
                 if time.monotonic() >= next_heartbeat:
-                    if self.api.call("heartbeat", bound.model_dump()).get("continue") is not True:
+                    allowed = self.api.call("heartbeat", bound.model_dump()).get("continue") is True
+                    if not allowed or expired.is_set() or time.monotonic() >= deadline:
                         cancelled = True
                         break
-                    next_heartbeat = time.monotonic() + 2
+                    next_heartbeat = time.monotonic() + HEARTBEAT_SECONDS
                 try:
                     process.process.wait(timeout=0.05)
                 except subprocess.TimeoutExpired:
@@ -144,8 +179,10 @@ class Client:
         except Exception:
             cancelled = True
         finally:
-            if process:
-                closed = process.close()
+            cleanup()
+            watchdog.cancel()
+            watchdog.join()
+            cancelled = cancelled or expired.is_set()
         if process:
             stdout, stderr = process.output()
             parsed = parse(

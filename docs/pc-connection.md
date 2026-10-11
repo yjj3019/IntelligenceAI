@@ -108,3 +108,17 @@ fences and execution without server configuration. CI runs independent real
 ephemeral PostgreSQL claim/start barriers and preserves eight core environments.
 `PCPanel.test.tsx` covers explicit consent/disconnect, duplicate clicks, navigation,
 late responses, authority loss, ephemeral codes and Korean labels.
+
+The local wall-clock deadline is independent of HTTP operation timeouts. An owned
+process watchdog also covers the final authorization heartbeat before native stdin
+handoff; every heartbeat response is checked against the monotonic deadline again.
+Delayed final-gate and running responses are separate synthetic regression cases.
+
+If cancellation commits after an immutable completed result journal was saved,
+the exact bound cleanup report closes that attempt as `CANCELLED`. Its text is
+discarded, and an identical retry returns the same receipt without another CLI
+launch. Stale or conflicting uploads remain rejected.
+
+Remote usage is a device report limited to input/output tokens
+(`INPUT_OUTPUT_ONLY`). Cache/reasoning tokens and measurement time are not
+provided. Missing values remain unknown and are never interpreted as zero.
